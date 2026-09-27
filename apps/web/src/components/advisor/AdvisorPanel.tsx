@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Check, Lightbulb, X } from 'lucide-react';
 import { advise, type Suggestion } from '@volna/engine';
-import { fmtDate, fmtDays } from '../../lib/format';
+import { fmtDate, fmtDays, fmtDaysLong } from '../../lib/format';
 import { useModel, usePropose } from '../../lib/model';
 import { toast, useDraft } from '../../store/draft';
 import { Button, Chip, cx } from '../ui';
@@ -34,7 +34,7 @@ export function AdvisorPanel() {
       <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
         {late
           ? `Проект опаздывает на ${fmtDays(-analysis.bufferDays)} (финиш ${fmtDate(analysis.finishDate)}, дедлайн ${fmtDate(state.project.deadline)}). Каждый вариант уже просчитан по текущему плану${impact ? ' с учётом черновика' : ''}. Выбранный вариант попадёт в черновик, и вы увидите последствия до применения.`
-          : `Проект укладывается в срок, запас ${fmtDays(analysis.bufferDays)}. Ниже — как усилить запас и снять перегрузки людей.`}
+          : `Проект укладывается в срок, запас ${fmtDaysLong(analysis.bufferDays)}. Ниже — как усилить запас и снять перегрузки людей.`}
       </p>
 
       {advice.plan && (

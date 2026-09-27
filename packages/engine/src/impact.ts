@@ -1,4 +1,4 @@
-import { daysText } from './calendar';
+import { daysText, plural } from './calendar';
 import type {
   Alert,
   Analysis,
@@ -181,7 +181,9 @@ export function diffAnalyses(
         ? `Срок проекта не меняется, но дедлайн нарушен на ${daysText(-bufferAfter)}`
         : `Запас до дедлайна: ${daysText(before.bufferDays)} → ${daysText(bufferAfter)}`;
   } else if (wavedCount > 0) {
-    headline = `Сдвигаются ${wavedCount} зависимых задач, но срок проекта не меняется`;
+    const verb = plural(wavedCount, 'Сдвигается', 'Сдвигаются', 'Сдвигаются');
+    const noun = plural(wavedCount, 'зависимая задача', 'зависимые задачи', 'зависимых задач');
+    headline = `${verb} ${wavedCount} ${noun}, но срок проекта не меняется`;
   } else {
     headline = 'Срок проекта не меняется';
   }
@@ -191,8 +193,9 @@ export function diffAnalyses(
   if (criticalAdded.length > 0) {
     attention.push(`На критический путь попали: ${criticalAdded.map(name).join(', ')}`);
   }
+  // Резерв «съеден»: задача стала почти критической (именно малый резерв, а не другой риск).
   const eatenFloat = affected.filter(
-    (x) => !x.criticalBefore && x.criticalAfter === false && x.riskBefore === 'none' && x.riskAfter !== 'none',
+    (x) => after.tasks[x.taskId].flags.lowFloat && !before.tasks[x.taskId]?.flags.lowFloat,
   );
   if (eatenFloat.length > 0) {
     attention.push(`Резерв почти исчерпан у ${eatenFloat.map((x) => name(x.taskId)).join(', ')}`);

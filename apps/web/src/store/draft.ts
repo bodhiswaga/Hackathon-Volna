@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { ChangeOp } from '@volna/engine';
 
 export type ViewTab = 'timeline' | 'graph' | 'table' | 'journal' | 'team';
-export type SidePanel = 'auto' | 'advisor';
+export type SidePanel = 'auto' | 'advisor' | 'project';
 
 interface DraftStore {
   projectId: string | null;

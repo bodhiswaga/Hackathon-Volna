@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch --disable-warning=ExperimentalWarning src/index.ts",
     "start": "tsx --disable-warning=ExperimentalWarning src/index.ts",
-    "seed": "tsx --disable-warning=ExperimentalWarning src/seed.ts"
+    "seed": "tsx --disable-warning=ExperimentalWarning src/seed.ts",
+    "e2e": "tsx --disable-warning=ExperimentalWarning scripts/e2e-check.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",

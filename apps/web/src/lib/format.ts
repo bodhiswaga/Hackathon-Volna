@@ -1,4 +1,4 @@
-import { parseDate, pluralDays, type Health, type ISODate, type TaskStatus } from '@volna/engine';
+import { formatShort, parseDate, plural, pluralDays, type Health, type ISODate, type TaskStatus } from '@volna/engine';
 
 export const HEALTH_TEXT: Record<Health, string> = {
   ok: 'Идёт по плану',
@@ -12,7 +12,6 @@ export const HEALTH_COLOR: Record<Health, string> = {
   intervention: 'var(--color-crimson)',
 };
 
-const dayMonth = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 const weekday = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', timeZone: 'UTC' });
 const monthLong = new Intl.DateTimeFormat('ru-RU', { month: 'long', timeZone: 'UTC' });
 const dateTime = new Intl.DateTimeFormat('ru-RU', {
@@ -25,7 +24,7 @@ const dateTime = new Intl.DateTimeFormat('ru-RU', {
 /** «30 окт» */
 export function fmtDate(date: ISODate | null | undefined): string {
   if (!date) return '—';
-  return dayMonth.format(new Date(parseDate(date))).replace('.', '');
+  return formatShort(date);
 }
 
 export function fmtWeekday(date: ISODate): string {
@@ -88,4 +87,14 @@ export function initials(name: string): string {
 
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+/** «1 задача», «3 задачи», «5 задач». */
+export function fmtTasks(n: number): string {
+  return `${n} ${plural(n, 'задача', 'задачи', 'задач')}`;
+}
+
+/** «сдвигается 1 зависимая задача», «сдвигаются 3 зависимые задачи». */
+export function fmtShiftedTasks(n: number): string {
+  return `${plural(n, 'сдвигается', 'сдвигаются', 'сдвигаются')} ${n} ${plural(n, 'зависимая задача', 'зависимые задачи', 'зависимых задач')}`;
 }

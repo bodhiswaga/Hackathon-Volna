@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, Flame, Minus, Plus, Users } from 'lucide-react';
+import { AlertTriangle, Flame, Maximize2, Minus, Plus, Users } from 'lucide-react';
 import {
   addCalendarDays,
   diffCalendarDays,
@@ -16,7 +16,8 @@ import { Avatar, cx, Empty, StatusDot } from '../ui';
 
 const ROW = 44;
 const HEADER = 52;
-const LEFT = 300;
+const LEFT = 260;
+const MIN_DAY_W = 8;
 const BAR_H = 20;
 
 const FILL = {
@@ -34,7 +35,9 @@ export function GanttView() {
   const { state, analysis: a, baseAnalysis: b, impact } = useModel();
   const selectedId = useDraft((s) => s.selectedTaskId);
   const select = useDraft((s) => s.select);
-  const [dayW, setDayW] = useState(26);
+  // null — масштаб подбирается автоматически; число — пользователь зумил вручную.
+  const [zoom, setZoom] = useState<number | null>(null);
+  const [viewport, setViewport] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const byId = useMemo(() => new Map(state.tasks.map((t) => [t.id, t])), [state.tasks]);
@@ -59,19 +62,25 @@ export function GanttView() {
     return { start, days: diffCalendarDays(start, end) + 1 };
   }, [state, a, b, impact, order]);
 
+  const autoW = viewport > 0 ? Math.floor((viewport - LEFT - 16) / range.days) : 26;
+  const dayW = zoom ?? Math.min(40, Math.max(MIN_DAY_W, autoW));
   const x = (d: ISODate) => diffCalendarDays(range.start, d) * dayW;
   const width = range.days * dayW;
   const height = order.length * ROW;
   const rowOf = new Map(order.map((id, i) => [id, i]));
 
-  // При открытии вписываем весь план в ширину экрана (волна видна целиком).
+  // Следим за шириной области: по умолчанию весь план вписан в экран (волна видна целиком),
+  // в том числе когда черновик расширяет диапазон дат.
+  const hasTasks = order.length > 0;
   useLayoutEffect(() => {
     const scroller = rootRef.current?.parentElement;
     if (!scroller) return;
-    const fit = Math.floor((scroller.clientWidth - LEFT - 16) / range.days);
-    setDayW(Math.min(40, Math.max(12, fit)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const update = () => setViewport(scroller.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(scroller);
+    return () => ro.disconnect();
+  }, [hasTasks]);
 
   if (order.length === 0) {
     return (
@@ -105,11 +114,22 @@ export function GanttView() {
         >
           <span className="text-[12px] font-medium text-ink-3">Задачи в порядке выполнения</span>
           <div className="flex items-center gap-0.5">
+            {zoom !== null && (
+              <button
+                type="button"
+                title="Вписать весь план в экран"
+                aria-label="Вписать весь план в экран"
+                className="rounded p-1 text-ink-3 hover:bg-line-soft hover:text-ink"
+                onClick={() => setZoom(null)}
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
             <button
               type="button"
               aria-label="Уменьшить масштаб"
               className="rounded p-1 text-ink-3 hover:bg-line-soft hover:text-ink"
-              onClick={() => setDayW((w) => Math.max(12, w - 6))}
+              onClick={() => setZoom(Math.max(MIN_DAY_W, dayW - 4))}
             >
               <Minus size={14} />
             </button>
@@ -117,7 +137,7 @@ export function GanttView() {
               type="button"
               aria-label="Увеличить масштаб"
               className="rounded p-1 text-ink-3 hover:bg-line-soft hover:text-ink"
-              onClick={() => setDayW((w) => Math.min(56, w + 6))}
+              onClick={() => setZoom(Math.min(56, dayW + 6))}
             >
               <Plus size={14} />
             </button>
@@ -150,7 +170,9 @@ export function GanttView() {
             );
           })}
           <rect x={todayX} y={24} width={dayW} height={HEADER - 26} rx={5} fill="none" stroke="var(--color-cobalt)" strokeWidth={1.5} />
-          <text x={deadlineX - 4} y={15} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--color-crimson)">
+          {/* Подложка, чтобы подпись дедлайна не сливалась с названием месяца. */}
+          <rect x={deadlineX - 92} y={3} width={90} height={16} rx={4} fill="var(--color-crimson-soft)" />
+          <text x={deadlineX - 6} y={15} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--color-crimson)">
             дедлайн {fmtDate(state.project.deadline)}
           </text>
         </svg>
@@ -336,12 +358,12 @@ export function GanttView() {
         </svg>
       </div>
 
-      <Legend />
+      <Legend width={viewport} />
     </div>
   );
 }
 
-function Legend() {
+function Legend({ width }: { width: number }) {
   const item = (swatch: ReactNode, label: string) => (
     <span className="flex items-center gap-1.5">
       {swatch}
@@ -352,7 +374,7 @@ function Legend() {
     <span className="inline-block h-2.5 w-5 rounded-sm" style={{ background: bg, border: border ? `2px solid ${border}` : undefined }} />
   );
   return (
-    <div className="sticky left-0 flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-4 text-[12px] text-ink-2" style={{ width: 'min(100%, 100vw - 420px)' }}>
+    <div className="sticky left-0 flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-4 text-[12px] text-ink-2" style={{ width: width || '100%' }}>
       {item(box(FILL.done), 'Выполнена')}
       {item(box(FILL.in_progress), 'В работе')}
       {item(box(FILL.not_started, '#aeb6c5'), 'Не начата')}

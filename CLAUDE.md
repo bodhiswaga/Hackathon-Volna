@@ -44,7 +44,7 @@ apps/web/src/
   store/draft.ts # Zustand: черновик ops, выбранная задача, вкладка, тосты
   lib/           # model.ts (base + черновик → анализ + impact), format.ts, router.ts (hash-роутинг)
   pages/         # ProjectsPage, ProjectPage
-  components/    # StatusStrip, AttentionPanel, JournalView, TeamView, ui.tsx,
+  components/    # StatusStrip, AttentionPanel, JournalView, TeamView, ProjectSettings, ui.tsx,
                  # gantt/, graph/, table/, task/TaskEditor, impact/ImpactPanel, advisor/AdvisorPanel
 docs/tz.pdf, docs/demo-script.md
 ```
@@ -90,7 +90,14 @@ docs/tz.pdf, docs/demo-script.md
 ### Анализ последствий (`changeset.ts`, `impact.ts`)
 - `applyChangeSet(state, ops)` — чистая функция, валидирует и проверяет цикл. Ops: `updateTask`, `createTask`,
   `deleteTask`, `addDependency`, `removeDependency`, `updateDependency`, `updateProject`.
-- `mergeOps` схлопывает правки одной задачи в один патч (черновик не разрастается).
+- `applyChangeSet` также проверяет проект: непустое название, дедлайн не раньше старта.
+- `mergeOps` схлопывает правки одной задачи в один патч (черновик не разрастается); при удалении задачи
+  её правки и новые связи из черновика убираются, а созданная и удалённая задача исчезает целиком.
+- `statusPatch` ставит фактические даты только на рабочие дни: «в работе» — старт сегодня (в выходной —
+  понедельник); «выполнена» — окончание в последний рабочий день ≤ сегодня, старт плановый, если уже наступил,
+  иначе отсчитывается назад на длительность задачи.
+- `summarizeOps` — короткий заголовок записи журнала («… и ещё N изм.»).
+- Тексты движка используют `formatShort` («7 окт») и `plural` — тот же формат, что и в UI.
 - `diffAnalyses`: затронутые задачи (ΔES/ΔEF), цепочка причин по `driver` до изменённой задачи,
   Δ финиша, запас до/после, новые и снятые алерты (по `key`), изменения критического пути, заголовок, вердикт:
   `intervention` — запас < 0 или новый high-алерт; `attention` — финиш сдвинулся, новые алерты или критические задачи.
@@ -139,6 +146,7 @@ npm start         # продакшн: собрать фронт и поднят�
 npm test          # тесты движка (vitest)
 npm run typecheck # tsc по всем пакетам
 npm run seed      # пересоздать демо-проект (то же делает кнопка «Сбросить демо»)
+npm run e2e       # сквозная проверка сценариев ТЗ через API (нужен запущенный сервер; пересоздаёт демо)
 ```
 
 - БД: `apps/server/data/volna.db` (переопределяется `DB_PATH`), при пустой БД демо создаётся автоматически.
@@ -148,12 +156,13 @@ npm run seed      # пересоздать демо-проект (то же де
 - Логи сервера — на английском (кириллица в JSON-логах pino искажается в консоли Windows); логи запросов
   отключены через `LogController`, чтобы не засорять терминал на демо.
 - Граф (`GraphView`) грузится лениво (`React.lazy`) — отдельный чанк, основной бандл < 500 КБ.
+- Gantt по умолчанию вписывает весь план в ширину (ResizeObserver, мин. 8 px на день); ручной зум отключает автоподгонку, кнопка «Вписать» возвращает её. Боковая панель: 360 px до 1280 px, 420 px шире. Проверено на 1024, 1280, 1366 и 1440 px.
 - Docker: `docker build -t volna . && docker run -p 3001:3001 -v volna-data:/data volna`
   (Dockerfile написан, но **не проверен**: Docker Desktop не был запущен).
 
 ## Статус этапов
 - [x] 0. Каркас (workspaces, Vite, Fastify, Tailwind, `npm run dev`)
-- [x] 1. Движок + тесты (16 тестов)
+- [x] 1. Движок + тесты (21 тест) + сквозная API-проверка `npm run e2e` (43 проверки)
 - [x] 2. БД + API + сид, журнал и откат
 - [x] 3. Frontend-основа (проекты, таблица, редактор задачи)
 - [x] 4. Визуализация (статусная полоса, Gantt, граф, таблица, команда)

@@ -1,4 +1,4 @@
-import { daysText, formatShort } from './calendar';
+import { daysText, endIndex, formatShort, indexToDate, startIndex } from './calendar';
 import { buildAdjacency, CycleError, topoSort } from './graph';
 import type {
   Analysis,
@@ -118,6 +118,12 @@ export function applyChangeSet(state: ProjectState, ops: ChangeOp[]): ProjectSta
         checkDate(next.project.startDate, 'startDate');
         checkDate(next.project.deadline, 'deadline');
         checkDate(next.project.statusDate, 'statusDate');
+        if (!next.project.name.trim()) {
+          throw new ChangeSetError('invalid', 'Название проекта не может быть пустым');
+        }
+        if (next.project.deadline < next.project.startDate) {
+          throw new ChangeSetError('invalid', 'Дедлайн не может быть раньше старта проекта');
+        }
         break;
       }
     }
@@ -155,26 +161,40 @@ export function applyChangeSet(state: ProjectState, ops: ChangeOp[]): ProjectSta
 }
 
 /**
- * Патч смены статуса с автозаполнением фактических дат:
- * «в работе» — фактический старт сегодня, «выполнена» — окончание сегодня.
+ * Патч смены статуса с автозаполнением фактических дат (всегда рабочие дни):
+ * «в работе» — старт сегодня (в выходной — ближайший понедельник);
+ * «выполнена» — окончание в последний рабочий день не позже сегодня, старт — по плану,
+ * если он уже наступил, иначе отсчитывается назад на длительность задачи.
  */
 export function statusPatch(
   task: Task,
   status: TaskStatus,
   analysis: Analysis,
 ): TaskPatch {
-  const today = analysis.today;
   const sched = analysis.tasks[task.id];
   switch (status) {
     case 'not_started':
     case 'blocked':
       return { status, actualStart: null, actualEnd: null };
     case 'in_progress':
-      return { status, actualStart: task.actualStart ?? today, actualEnd: null };
+      return {
+        status,
+        actualStart: task.actualStart ?? indexToDate(analysis.todayIndex),
+        actualEnd: null,
+      };
     case 'done': {
-      const plannedStart = sched?.startDate ?? today;
-      const actualStart = task.actualStart ?? (plannedStart < today ? plannedStart : today);
-      return { status, actualStart, actualEnd: today };
+      const endIdx = endIndex(analysis.today); // исключающий конец: после последнего рабочего дня ≤ сегодня
+      let startIdx = task.actualStart
+        ? startIndex(task.actualStart)
+        : sched && sched.es < endIdx
+          ? sched.es
+          : endIdx - Math.max(1, task.durationDays);
+      startIdx = Math.min(startIdx, endIdx - 1);
+      return {
+        status,
+        actualStart: indexToDate(startIdx),
+        actualEnd: indexToDate(Math.max(startIdx, endIdx - 1)),
+      };
     }
   }
 }
@@ -213,20 +233,28 @@ export function mergeOps(ops: ChangeOp[], op: ChangeOp): ChangeOp[] {
     if (added >= 0) return ops.filter((_, i) => i !== added);
   }
   if (op.type === 'deleteTask') {
-    const created = ops.findIndex((o) => o.type === 'createTask' && o.task.id === op.taskId);
-    if (created >= 0) {
-      return ops.filter(
-        (o, i) =>
-          i !== created &&
-          !(o.type === 'updateTask' && o.taskId === op.taskId) &&
-          !(
-            o.type === 'addDependency' &&
-            (o.dependency.predecessorId === op.taskId || o.dependency.successorId === op.taskId)
-          ),
-      );
-    }
+    // Правки удаляемой задачи и её новые связи из черновика больше не нужны.
+    const rest = ops.filter(
+      (o) =>
+        !(o.type === 'updateTask' && o.taskId === op.taskId) &&
+        !(
+          o.type === 'addDependency' &&
+          (o.dependency.predecessorId === op.taskId || o.dependency.successorId === op.taskId)
+        ),
+    );
+    const created = rest.some((o) => o.type === 'createTask' && o.task.id === op.taskId);
+    return created
+      ? rest.filter((o) => !(o.type === 'createTask' && o.task.id === op.taskId))
+      : [...rest, op];
   }
   return [...ops, op];
+}
+
+/** Короткий заголовок изменения для журнала: первые пункты описания и «и ещё N». */
+export function summarizeOps(state: ProjectState, ops: ChangeOp[], max = 2): string {
+  const lines = describeOps(state, ops);
+  if (lines.length <= max + 1) return lines.join('; ');
+  return `${lines.slice(0, max).join('; ')} и ещё ${lines.length - max} изм.`;
 }
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -318,7 +346,10 @@ export function describeOps(state: ProjectState, ops: ChangeOp[]): string[] {
         if (p.startDate && p.startDate !== state.project.startDate) {
           lines.push(`Старт проекта → ${formatShort(p.startDate)}`);
         }
-        if (p.name && p.name !== state.project.name) lines.push(`Проект переименован`);
+        if (p.name && p.name !== state.project.name) lines.push(`Проект переименован в «${p.name}»`);
+        if (p.description !== undefined && p.description !== state.project.description) {
+          lines.push('Обновлено описание проекта');
+        }
         if (p.statusDate !== undefined && p.statusDate !== state.project.statusDate) {
           lines.push(p.statusDate ? `Дата статуса → ${formatShort(p.statusDate)}` : 'Дата статуса — сегодня');
         }

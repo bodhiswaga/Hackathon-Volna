@@ -62,18 +62,26 @@ export function addWorkdays(date: ISODate, n: number): ISODate {
   return indexToDate(startIndex(date) + n);
 }
 
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/** «7 окт» — тот же формат, что и в интерфейсе. */
 export function formatShort(date: ISODate): string {
   const [, m, d] = date.split('-');
-  return `${d}.${m}`;
+  return `${Number(d)} ${MONTHS_SHORT[Number(m) - 1]}`;
+}
+
+/** Форма слова для числа: plural(5, 'задача', 'задачи', 'задач') → 'задач'. */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b === 1) return one;
+  if (b >= 2 && b <= 4) return few;
+  return many;
 }
 
 export function pluralDays(n: number): string {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return 'дней';
-  if (b === 1) return 'день';
-  if (b >= 2 && b <= 4) return 'дня';
-  return 'дней';
+  return plural(n, 'день', 'дня', 'дней');
 }
 
 export function daysText(n: number): string {

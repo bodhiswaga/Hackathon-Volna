@@ -39,6 +39,8 @@ export function TaskEditor({ task }: { task: Task }) {
   const propose = usePropose();
   const select = useDraft((s) => s.select);
   const [delayDate, setDelayDate] = useState(addWorkdays(analysis.today, 5));
+  const [name, setName] = useState(task.name);
+  const setTab = useDraft((s) => s.setTab);
   const s = analysis.tasks[task.id];
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
   const patch = (p: TaskPatch) => propose({ type: 'updateTask', taskId: task.id, patch: p });
@@ -75,8 +77,10 @@ export function TaskEditor({ task }: { task: Task }) {
       <div className="flex items-start gap-2">
         <input
           className="min-w-0 flex-1 rounded-lg border border-transparent px-1 py-0.5 text-[17px] font-semibold outline-none hover:border-line focus:border-cobalt"
-          value={task.name}
-          onChange={(e) => patch({ name: e.target.value })}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => (name.trim() ? name.trim() !== task.name && patch({ name: name.trim() }) : setName(task.name))}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           aria-label="Название задачи"
         />
         <button type="button" aria-label="Закрыть" className="rounded-lg p-1.5 text-ink-3 hover:bg-line-soft hover:text-ink" onClick={() => select(null)}>
@@ -155,7 +159,16 @@ export function TaskEditor({ task }: { task: Task }) {
             </button>
           </div>
         </Field>
-        <Field label="Ответственный">
+        <Field
+          label="Ответственный"
+          hint={
+            state.people.length === 0 && (
+              <button type="button" className="text-cobalt hover:underline" onClick={() => setTab('team')}>
+                Добавьте людей во вкладке «Команда»
+              </button>
+            )
+          }
+        >
           <select className={inputClass} value={task.assigneeId ?? ''} onChange={(e) => patch({ assigneeId: e.target.value || null })}>
             <option value="">Не назначен</option>
             {state.people.map((p) => (

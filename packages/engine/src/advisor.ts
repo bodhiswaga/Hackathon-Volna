@@ -139,7 +139,7 @@ function accelerationCandidates(ctx: Ctx, exclude: Set<string>): Suggestion[] {
       id: key,
       kind: 'parallelize',
       title: `Начать «${succ.name}» на ${daysText(k)} раньше`,
-      description: `Частично распараллелить с «${pred.name}»: старт до её полного окончания. Риск доработок — нужна синхронизация команд`,
+      description: `Старт до полного окончания предшествующей задачи «${pred.name}» (нахлёст ${daysText(k)}). Риск доработок — нужна синхронизация команд`,
       ops: [{ type: 'updateDependency', dependencyId: d.id, lagDays: -k }],
       cost: 3,
     }));
@@ -191,7 +191,7 @@ function reassignCandidates(ctx: Ctx): Suggestion[] {
       id: `reassign:${id}:${free.id}`,
       kind: 'reassign',
       title: `Передать «${t.name}» → ${free.name}`,
-      description: `${from?.name ?? 'Исполнитель'} перегружен(а) в этот период, у ${free.name} окно свободно`,
+      description: `${from?.name ?? 'Исполнитель'}: задачи пересекаются по времени. ${free.name}: в этот период свободное окно`,
       ops: [{ type: 'updateTask', taskId: id, patch: { assigneeId: free.id } }],
       cost: 1,
     });

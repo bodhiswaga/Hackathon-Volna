@@ -10,6 +10,7 @@
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev -w @volna/server\" \"npm:dev -w @volna/web\"",
     "test": "npm test -w @volna/engine",
     "seed": "npm run seed -w @volna/server",
+    "e2e": "npm run e2e -w @volna/server",
     "typecheck": "tsc -p packages/engine && tsc -p apps/server && tsc -p apps/web",
     "build": "npm run build -w @volna/web",
     "start": "npm run build && npm start -w @volna/server"

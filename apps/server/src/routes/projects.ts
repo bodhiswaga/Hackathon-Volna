@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   analyze,
   applyChangeSet,
-  describeOps,
+  summarizeOps,
   type ChangeOp,
   type Person,
   type ProjectState,
@@ -157,7 +157,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const body = changeBodySchema.parse(req.body);
     const ops = body.ops as ChangeOp[];
     const after = applyChangeSet(before, ops);
-    const title = body.title?.trim() || describeOps(before, ops).join('; ') || 'Изменение плана';
+    const title = body.title?.trim() || summarizeOps(before, ops) || 'Изменение плана';
     const event = commit(before, after, title, body.reason?.trim() || null, ops);
     return { state: mustLoad(req.params.id), event };
   });

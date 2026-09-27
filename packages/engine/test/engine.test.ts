@@ -9,6 +9,9 @@ import {
   endIndex,
   indexToDate,
   startIndex,
+  mergeOps,
+  statusPatch,
+  summarizeOps,
   type ChangeOp,
 } from '../src';
 import { dep, person, START, state, task } from './fixtures';
@@ -123,10 +126,64 @@ describe('ChangeSet', () => {
     }
   });
 
+  it('ставит корректные фактические даты при смене статуса, в том числе в выходной', () => {
+    const s = chain();
+    // Воскресенье 13.09: плановый старт (пн 14.09) ещё не наступил — окончание в пятницу 11.09,
+    // старт отсчитан назад на длительность задачи (3 дня). Интервал не пустой.
+    const sunday = analyze(s, '2026-09-13');
+    const done = statusPatch(s.tasks[0], 'done', sunday);
+    expect(done).toMatchObject({ status: 'done', actualStart: '2026-09-09', actualEnd: '2026-09-11' });
+    const after = analyze(applyChangeSet(s, [{ type: 'updateTask', taskId: 'A', patch: done }]), '2026-09-13');
+    expect(after.tasks.A.ef - after.tasks.A.es).toBe(3);
+    // «В работе» в выходной — старт в ближайший рабочий день.
+    expect(statusPatch(s.tasks[0], 'in_progress', sunday)).toMatchObject({ actualStart: '2026-09-14' });
+
+    // Будний день: плановый старт уже наступил — старт плановый, окончание сегодня.
+    const wed = analyze(s, '2026-09-09');
+    expect(statusPatch(s.tasks[0], 'done', wed)).toMatchObject({
+      actualStart: '2026-09-09',
+      actualEnd: '2026-09-09',
+    });
+    // Фактический старт, если уже есть, сохраняется.
+    const started = { ...s.tasks[0], status: 'in_progress' as const, actualStart: '2026-09-07' };
+    expect(statusPatch(started, 'done', wed)).toMatchObject({ actualStart: '2026-09-07', actualEnd: '2026-09-09' });
+  });
+
+  it('проверяет параметры проекта', () => {
+    expect(() =>
+      applyChangeSet(chain(), [{ type: 'updateProject', patch: { deadline: '2026-01-01' } }]),
+    ).toThrow(/Дедлайн/);
+    const next = applyChangeSet(chain(), [{ type: 'updateProject', patch: { deadline: '2026-09-18' } }]);
+    expect(analyze(next, TODAY).bufferDays).toBe(-2);
+  });
+
   it('не мутирует исходное состояние', () => {
     const s = chain();
     applyChangeSet(s, [{ type: 'updateTask', taskId: 'B', patch: { durationDays: 9 } }]);
     expect(s.tasks[1].durationDays).toBe(2);
+  });
+
+  it('сокращает заголовок пакетного изменения', () => {
+    const ops: ChangeOp[] = ['A', 'B', 'C', 'D'].map((id) => ({
+      type: 'updateTask',
+      taskId: id,
+      patch: { durationDays: 9 },
+    }));
+    expect(summarizeOps(chain(), ops)).toMatch(/^«A»: .*; «B»: .* и ещё 2 изм\.$/);
+    expect(summarizeOps(chain(), ops.slice(0, 3)).split('; ')).toHaveLength(3);
+  });
+
+  it('схлопывает правки удалённой задачи в черновике', () => {
+    let ops: ChangeOp[] = [];
+    ops = mergeOps(ops, { type: 'updateTask', taskId: 'B', patch: { durationDays: 9 } });
+    ops = mergeOps(ops, { type: 'updateTask', taskId: 'B', patch: { status: 'blocked' } });
+    expect(ops).toHaveLength(1);
+    ops = mergeOps(ops, { type: 'deleteTask', taskId: 'B' });
+    expect(ops).toEqual([{ type: 'deleteTask', taskId: 'B' }]);
+    // Созданная и сразу удалённая задача исчезает из черновика целиком.
+    let created: ChangeOp[] = mergeOps([], { type: 'createTask', task: task('N', 2) });
+    created = mergeOps(created, { type: 'addDependency', dependency: dep('A', 'N') });
+    expect(mergeOps(created, { type: 'deleteTask', taskId: 'N' })).toEqual([]);
   });
 
   it('удаляет связи вместе с задачей', () => {
@@ -152,6 +209,19 @@ describe('анализ последствий', () => {
     expect(r.finishDelta).toBe(2);
     expect(r.wavedCount).toBe(2);
     expect(r.verdict).toBe('attention');
+  });
+
+  it('не путает перегруз с исчерпанием резерва', () => {
+    const s = state(
+      [task('A', 5, { assigneeId: 'ivan' }), task('B', 3, { assigneeId: 'olga' })],
+      [],
+      { people: [person('ivan'), person('olga')] },
+    );
+    const ops: ChangeOp[] = [{ type: 'updateTask', taskId: 'B', patch: { assigneeId: 'ivan' } }];
+    const after = applyChangeSet(s, ops);
+    const r = diffAnalyses(s, analyze(s, TODAY), after, analyze(after, TODAY), ops);
+    expect(r.attention.some((t) => t.includes('ведёт параллельно'))).toBe(true);
+    expect(r.attention.some((t) => t.includes('Резерв'))).toBe(false);
   });
 
   it('требует вмешательства при выходе за дедлайн', () => {

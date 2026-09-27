@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { useProject, useResetDemo } from '../api/hooks';
 import { AdvisorPanel } from '../components/advisor/AdvisorPanel';
 import { AttentionPanel } from '../components/AttentionPanel';
 import { GanttView } from '../components/gantt/GanttView';
 import { ImpactPanel } from '../components/impact/ImpactPanel';
 import { JournalView } from '../components/JournalView';
+import { ProjectSettings } from '../components/ProjectSettings';
 import { StatusStrip } from '../components/StatusStrip';
 import { TaskTable } from '../components/table/TaskTable';
 import { TaskEditor } from '../components/task/TaskEditor';
@@ -70,6 +71,8 @@ export function ProjectPage({ id }: { id: string }) {
 function TopBar() {
   const { state } = useModel();
   const reset = useResetDemo();
+  const side = useDraft((s) => s.side);
+  const setSide = useDraft((s) => s.setSide);
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-6">
       <button
@@ -89,6 +92,9 @@ function TopBar() {
         </p>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={() => setSide(side === 'project' ? 'auto' : 'project')}>
+          <Settings2 size={14} /> Параметры проекта
+        </Button>
         {state.project.id === 'demo' && (
           <Button
             variant="ghost"
@@ -184,7 +190,7 @@ function SideColumn() {
     if (hasDraft || side === 'advisor') ref.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [hasDraft, side]);
   return (
-    <aside ref={ref} className="w-[420px] shrink-0 overflow-y-auto border-l border-line bg-surface">
+    <aside ref={ref} className="w-[360px] shrink-0 xl:w-[420px] overflow-y-auto border-l border-line bg-surface">
       <SidePanel />
     </aside>
   );
@@ -194,6 +200,14 @@ function SidePanel() {
   const { side, selectedTaskId } = useDraft();
   const { impact, state } = useModel();
   if (side === 'advisor') return <AdvisorPanel />;
+  if (side === 'project') {
+    return (
+      <div className="divide-y divide-line">
+        {impact && <ImpactPanel />}
+        <ProjectSettings />
+      </div>
+    );
+  }
   const selected = state.tasks.find((t) => t.id === selectedTaskId);
   return (
     <div className="divide-y divide-line">

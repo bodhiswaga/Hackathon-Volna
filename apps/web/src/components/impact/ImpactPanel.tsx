@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Check, Lightbulb, Undo2 } from 'lucide-react';
 import { describeOps, type Health } from '@volna/engine';
 import { useApplyChanges } from '../../api/hooks';
-import { fmtDate, fmtDays } from '../../lib/format';
+import { fmtDate, fmtDays, fmtShiftedTasks } from '../../lib/format';
 import { useModel } from '../../lib/model';
 import { useDraft } from '../../store/draft';
 import { Button, Chip, cx, inputClass } from '../ui';
@@ -73,7 +73,7 @@ export function ImpactPanel() {
       </ul>
 
       <h3 className="mt-5 text-[13px] font-semibold text-ink-2">
-        {waved.length > 0 ? `Волна: сдвигаются ${waved.length} зависимых задач` : 'Зависимые задачи не сдвигаются'}
+        {waved.length > 0 ? `Волна: ${fmtShiftedTasks(waved.length)}` : 'Зависимые задачи не сдвигаются'}
       </h3>
       {waved.length > 0 && (
         <ul className="mt-2 space-y-2">
