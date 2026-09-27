@@ -1,0 +1,84 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Onest', system-ui, sans-serif;
+  --font-display: 'Unbounded', 'Onest', sans-serif;
+
+  --color-ink: #172033;
+  --color-ink-2: #4a5468;
+  --color-ink-3: #8a93a6;
+  --color-paper: #f2f4f7;
+  --color-surface: #ffffff;
+  --color-line: #dce1ea;
+  --color-line-soft: #eceff4;
+
+  --color-cobalt: #2f54eb;
+  --color-cobalt-soft: #e7ecff;
+  --color-wave: #f97316;
+  --color-wave-soft: #fff1e6;
+  --color-crimson: #dc2f45;
+  --color-crimson-soft: #fdecee;
+  --color-moss: #2f9e6e;
+  --color-moss-soft: #e4f5ed;
+  --color-ochre: #b7791f;
+  --color-ochre-soft: #fbf1df;
+  --color-idle: #aeb6c5;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
+/* Волна: сдвинутые изменением задачи подсвечиваются по очереди вдоль цепочки. */
+@keyframes wave-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.wave-in {
+  animation: wave-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes wave-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(220 47 69 / 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(220 47 69 / 0);
+  }
+}
+.pulse-crimson {
+  animation: wave-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave-in,
+  .pulse-crimson {
+    animation: none;
+  }
+}
+
+.react-flow__attribution {
+  display: none;
+}
