@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, RotateCcw } from 'lucide-react';
 import { useProject, useResetDemo } from '../api/hooks';
 import { AdvisorPanel } from '../components/advisor/AdvisorPanel';
 import { AttentionPanel } from '../components/AttentionPanel';
 import { GanttView } from '../components/gantt/GanttView';
-import { GraphView } from '../components/graph/GraphView';
 import { ImpactPanel } from '../components/impact/ImpactPanel';
 import { JournalView } from '../components/JournalView';
 import { StatusStrip } from '../components/StatusStrip';
@@ -16,6 +15,11 @@ import { fmtDate, newId } from '../lib/format';
 import { ModelContext, useModel, usePropose, useProjectModel } from '../lib/model';
 import { navigate } from '../lib/router';
 import { useDraft, type ViewTab } from '../store/draft';
+
+// Граф (React Flow + dagre) — самая тяжёлая часть бандла, грузим его только при открытии вкладки.
+const GraphView = lazy(() =>
+  import('../components/graph/GraphView').then((m) => ({ default: m.GraphView })),
+);
 
 const TABS: { id: ViewTab; label: string }[] = [
   { id: 'timeline', label: 'Таймлайн' },
@@ -157,7 +161,11 @@ function CurrentView() {
     case 'timeline':
       return <GanttView />;
     case 'graph':
-      return <GraphView />;
+      return (
+        <Suspense fallback={<p className="p-6 text-sm text-ink-3">Загружаем граф…</p>}>
+          <GraphView />
+        </Suspense>
+      );
     case 'table':
       return <TaskTable />;
     case 'journal':
