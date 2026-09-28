@@ -6,3 +6,7 @@ apps/server/data
 .agents
 .claude
 *.log
+.playwright-mcp
+.mcp.json
+.env
+**/dist

@@ -1,0 +1,13 @@
+# Запуск одной командой: docker compose up --build  →  http://localhost:3001
+services:
+  volna:
+    build: .
+    image: volna
+    ports:
+      - '3001:3001'
+    volumes:
+      - volna-data:/data
+    restart: unless-stopped
+
+volumes:
+  volna-data:
