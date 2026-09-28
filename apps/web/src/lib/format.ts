@@ -80,7 +80,7 @@ export const STATUS_SHORT: Record<TaskStatus, string> = {
 export const STATUS_COLOR: Record<TaskStatus, string> = {
   not_started: 'var(--color-idle)',
   in_progress: 'var(--color-cobalt)',
-  blocked: 'var(--color-ochre)',
+  blocked: 'var(--color-ochre-bar)',
   done: 'var(--color-moss)',
 };
 

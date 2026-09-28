@@ -9,12 +9,13 @@ import {
   fmtDays,
   fmtShiftedTasks,
 } from '../../lib/format';
+import { GLOSSARY } from '../../lib/glossary';
 import { useModel } from '../../lib/model';
 import { useDraft } from '../../store/draft';
 import { BriefDialog } from '../brief/BriefDialog';
-import { Button, Chip, cx, SectionTitle } from '../ui';
+import { Button, Chip, cx, SectionTitle, Term, Tooltip } from '../ui';
 
-const VERDICT: Record<Health, { title: string; color: string; bg: string }> = {
+export const VERDICT: Record<Health, { title: string; color: string; bg: string }> = {
   ok: { title: 'Можно применять', color: 'var(--color-moss)', bg: 'var(--color-moss-soft)' },
   attention: {
     title: 'Есть последствия',
@@ -48,19 +49,16 @@ export function ImpactPanel() {
   return (
     <section className="p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-[16px] font-semibold">Что будет, если применить</h2>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setBriefOpen(true)}
-          title="Письмо заказчику и сообщения команде"
-        >
-          <Megaphone size={14} /> Сообщить
-        </Button>
+        <h2 className="text-base font-semibold">Что будет, если применить</h2>
+        <Tooltip content="Письмо заказчику и сообщения команде" describe={false}>
+          <Button size="sm" variant="ghost" onClick={() => setBriefOpen(true)}>
+            <Megaphone size={14} /> Сообщить
+          </Button>
+        </Tooltip>
       </div>
       {briefOpen && <BriefDialog onClose={() => setBriefOpen(false)} />}
 
-      <div className="mt-3 rounded-2xl p-4" style={{ background: v.bg }}>
+      <div className="mt-3 rounded-lg p-4" style={{ background: v.bg }}>
         <p
           className="flex items-center gap-1.5 text-[13px] font-semibold"
           style={{ color: v.color }}
@@ -71,9 +69,9 @@ export function ImpactPanel() {
         <p className="mt-1.5 text-[15px] leading-snug font-medium text-ink">{impact.headline}</p>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-ink/[0.07] pt-3 text-[13px]">
           <div>
-            <p className="text-ink-3">Финиш проекта</p>
+            <p className="text-ink-2">Финиш проекта</p>
             <p className="font-medium">
-              {fmtDate(impact.finishBefore)} <ArrowRight size={12} className="inline text-ink-3" />{' '}
+              {fmtDate(impact.finishBefore)} <ArrowRight size={12} className="inline text-ink-2" />{' '}
               {fmtDate(impact.finishAfter)}
               {impact.finishDelta !== 0 && (
                 <span className={cx('ml-1', impact.finishDelta > 0 ? 'text-crimson' : 'text-moss')}>
@@ -83,17 +81,19 @@ export function ImpactPanel() {
             </p>
           </div>
           <div>
-            <p className="text-ink-3">До дедлайна</p>
+            <p className="text-ink-2">До дедлайна</p>
             <p className={cx('font-medium', impact.bufferAfter < 0 && 'text-crimson')}>
               {fmtBuffer(impact.bufferBefore)}{' '}
-              <ArrowRight size={12} className="inline text-ink-3" /> {fmtBuffer(impact.bufferAfter)}
+              <ArrowRight size={12} className="inline text-ink-2" /> {fmtBuffer(impact.bufferAfter)}
             </p>
           </div>
           <div className="col-span-2 flex items-baseline justify-between gap-2">
-            <p className="text-ink-3">Шанс успеть к дедлайну</p>
+            <p className="text-ink-2">
+              <Term hint={GLOSSARY.chance}>Шанс успеть к дедлайну</Term>
+            </p>
             <p className="font-medium">
               {fmtChance(baseForecast.chance)}{' '}
-              <ArrowRight size={12} className="inline text-ink-3" />{' '}
+              <ArrowRight size={12} className="inline text-ink-2" />{' '}
               <span className={chanceText(forecast.chance)}>{fmtChance(forecast.chance)}</span>
             </p>
           </div>
@@ -101,7 +101,7 @@ export function ImpactPanel() {
       </div>
 
       {impact.bufferAfter < 0 && (
-        <Button variant="wave" className="mt-3 w-full" onClick={() => setSide('advisor')}>
+        <Button variant="primary" className="mt-3 w-full" onClick={() => setSide('advisor')}>
           <Lightbulb size={16} /> Подобрать решение
         </Button>
       )}
@@ -111,7 +111,7 @@ export function ImpactPanel() {
         <ul className="space-y-1 text-[13px]">
           {lines.map((l, i) => (
             <li key={i} className="flex gap-2">
-              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink" />
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-3" />
               {l}
             </li>
           ))}
@@ -125,17 +125,17 @@ export function ImpactPanel() {
             : 'Зависимые задачи не сдвигаются'}
         </SectionTitle>
         {waved.length > 0 && (
-          <ol className="relative space-y-2 border-l-2 border-wave/25 pl-3">
+          <ol className="relative -mx-2 border-l-2 border-wave/30 pl-2">
             {visible.map((x) => (
               <li
                 key={x.taskId}
                 className="wave-in"
-                style={{ animationDelay: `${(x.chain.length - 1) * 110}ms` }}
+                style={{ animationDelay: `${(x.chain.length - 1) * 60}ms` }}
               >
                 <button
                   type="button"
                   onClick={() => select(x.taskId)}
-                  className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-ink-3 hover:bg-paper/50"
+                  className="w-full rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-sunken active:bg-pressed"
                 >
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
@@ -164,11 +164,11 @@ export function ImpactPanel() {
           <button
             type="button"
             onClick={() => setShowAll((s) => !s)}
-            className="mt-2 flex items-center gap-1 rounded-lg px-1 text-[13px] font-medium text-ink-2 hover:text-ink"
+            className="mt-1 -ml-1 flex items-center gap-1 rounded-md px-1.5 py-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-sunken hover:text-ink"
           >
             <ChevronDown
               size={14}
-              className={cx('transition-transform', showAll && 'rotate-180')}
+              className={cx('transition-transform duration-200', showAll && 'rotate-180')}
             />
             {showAll ? 'Свернуть' : `Ещё ${waved.length - WAVE_PREVIEW}`}
           </button>

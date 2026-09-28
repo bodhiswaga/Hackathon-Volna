@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BookmarkPlus, Check, Lightbulb, X } from 'lucide-react';
+import { BookmarkPlus, Check, X } from 'lucide-react';
 import { advise, applyChangeSet, forecast, mergeOps, type Suggestion } from '@volna/engine';
 import { chanceTone, fmtChance, fmtDate, fmtDays, fmtDaysLong, newId } from '../../lib/format';
 import { useModel, useProposeAction } from '../../lib/model';
@@ -48,12 +48,13 @@ export function AdvisorPanel() {
 
   return (
     <section className="p-5">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-wave-soft text-wave-deep">
-          <Lightbulb size={17} />
-        </span>
-        <h2 className="flex-1 font-display text-[16px] font-semibold">Советник по срокам</h2>
-        <IconButton label="Закрыть советника" onClick={() => setSide('auto')}>
+      <div className="flex items-center gap-2">
+        <h2 className="flex-1 text-base font-semibold">Советник по срокам</h2>
+        <IconButton
+          className="in-sheet:hidden"
+          label="Закрыть советника"
+          onClick={() => setSide('auto')}
+        >
           <X size={16} />
         </IconButton>
       </div>
@@ -64,15 +65,13 @@ export function AdvisorPanel() {
       </p>
 
       {advice.plan && (
-        <div className="mt-4 overflow-hidden rounded-2xl bg-ink text-white">
+        <div className="mt-4 overflow-hidden rounded-lg border border-line">
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
-            <h3 className="font-display text-[15px] font-semibold whitespace-nowrap">
-              План восстановления
-            </h3>
+            <h3 className="text-sm font-semibold whitespace-nowrap">План восстановления</h3>
             <span
               className={cx(
-                'rounded-full px-2 py-0.5 text-[12px] font-medium whitespace-nowrap',
-                advice.plan.fitsDeadline ? 'bg-moss text-white' : 'bg-white/15 text-white',
+                'rounded-md px-1.5 py-0.5 text-[12px] font-medium whitespace-nowrap',
+                advice.plan.fitsDeadline ? 'bg-moss-soft text-moss' : 'bg-sunken text-ink-2',
               )}
             >
               {advice.plan.fitsDeadline
@@ -83,35 +82,30 @@ export function AdvisorPanel() {
           <ol className="mt-3 space-y-2 px-4">
             {advice.plan.steps.map((st, i) => (
               <li key={st.id} className="flex gap-2.5 text-[13px] leading-snug">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-[11px] font-semibold">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sunken text-[11px] font-semibold text-ink-2">
                   {i + 1}
                 </span>
                 <span>
                   {st.title}
-                  <span className="text-white/50">, {fmtDays(-st.gainDays)}</span>
+                  <span className="text-ink-3">, {fmtDays(-st.gainDays)}</span>
                 </span>
               </li>
             ))}
           </ol>
-          <p className="mt-4 border-t border-white/10 px-4 pt-3 text-[13px] text-white/70">
+          <p className="mt-4 border-t border-line-soft px-4 pt-3 text-[13px] text-ink-2">
             Финиш после плана:{' '}
-            <span className="font-medium text-white">{fmtDate(advice.plan.finishAfter)}</span>
+            <span className="font-medium text-ink">{fmtDate(advice.plan.finishAfter)}</span>
             {planChance !== null && (
               <>
                 , шанс успеть{' '}
-                <span
-                  className={cx(
-                    'font-medium',
-                    planChance < 0.5 ? 'text-crimson-light' : 'text-white',
-                  )}
-                >
+                <span className={cx('font-medium', planChance < 0.5 ? 'text-crimson' : 'text-ink')}>
                   {fmtChance(planChance)}
                 </span>
               </>
             )}
           </p>
           {planChance !== null && planChance < 0.5 && advice.plan.fitsDeadline && (
-            <p className="px-4 pt-1 text-[12px] leading-snug text-white/55">
+            <p className="px-4 pt-1 text-[12px] leading-snug text-ink-3">
               Дедлайн формально сохраняется, но запаса почти нет: сравните с переносом дедлайна.
             </p>
           )}
@@ -119,7 +113,6 @@ export function AdvisorPanel() {
             <Button
               size="sm"
               variant="ghost"
-              className="text-white/75 hover:bg-white/10 hover:text-white"
               disabled={planSaved}
               onClick={() => {
                 saveScenario({ id: newId(), name: 'План советника', ops: planOps! });
@@ -130,7 +123,7 @@ export function AdvisorPanel() {
             </Button>
             <Button
               size="sm"
-              className="border-transparent"
+              variant="primary"
               onClick={() =>
                 tryOps(
                   { ...advice.plan!, title: 'План советника' },
@@ -159,7 +152,7 @@ export function AdvisorPanel() {
           {advice.suggestions.map((s) => (
             <li
               key={s.id}
-              className="rounded-2xl border border-line p-3.5 transition-colors hover:border-ink-3/60"
+              className="rounded-lg border border-line p-3.5 transition-colors duration-150 hover:border-line-strong"
             >
               <p className="text-[13px] leading-snug font-medium">{s.title}</p>
               <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{s.description}</p>

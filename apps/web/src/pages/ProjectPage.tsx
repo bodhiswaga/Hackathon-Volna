@@ -1,21 +1,23 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
+import {
+  ArrowLeft,
   BookmarkPlus,
-  ChartGantt,
   Check,
   ChevronDown,
   Columns3,
   FolderOpen,
-  History,
   Plus,
-  Radar,
   RotateCcw,
   Settings2,
-  Table2,
   Undo2,
-  Users,
-  Workflow,
-  type LucideIcon,
 } from 'lucide-react';
 import { plural, summarizeOps } from '@volna/engine';
 import { useApplyChanges, useProject, useResetDemo } from '../api/hooks';
@@ -23,7 +25,7 @@ import { AdvisorPanel } from '../components/advisor/AdvisorPanel';
 import { AttentionPanel } from '../components/AttentionPanel';
 import { EventHost, EventsMenu } from '../components/events/EventDialog';
 import { GanttView } from '../components/gantt/GanttView';
-import { ImpactPanel } from '../components/impact/ImpactPanel';
+import { ImpactPanel, VERDICT } from '../components/impact/ImpactPanel';
 import { JournalView } from '../components/JournalView';
 import { ProjectSettings } from '../components/ProjectSettings';
 import { RisksView } from '../components/risks/RisksView';
@@ -39,12 +41,15 @@ import {
   inputClass,
   MenuItem,
   Popover,
+  Sheet,
   Skeleton,
+  Tooltip,
   WaveMark,
 } from '../components/ui';
-import { fmtDate, newId } from '../lib/format';
-import { ModelContext, useModel, usePropose, useProjectModel } from '../lib/model';
+import { fmtChance, fmtDate, fmtDays, newId } from '../lib/format';
+import { ModelContext, useAddTask, useModel, useProjectModel } from '../lib/model';
 import { navigate } from '../lib/router';
+import { useMediaQuery, WIDE_LAYOUT } from '../lib/useMediaQuery';
 import {
   confirmAction,
   sameOps,
@@ -59,17 +64,17 @@ const GraphView = lazy(() =>
   import('../components/graph/GraphView').then((m) => ({ default: m.GraphView })),
 );
 
-const TABS: { id: ViewTab; label: string; icon: LucideIcon }[] = [
-  { id: 'timeline', label: 'Таймлайн', icon: ChartGantt },
-  { id: 'risks', label: 'Риски', icon: Radar },
-  { id: 'graph', label: 'Граф связей', icon: Workflow },
-  { id: 'table', label: 'Задачи', icon: Table2 },
-  { id: 'team', label: 'Команда', icon: Users },
-  { id: 'journal', label: 'Журнал', icon: History },
+const TABS: { id: ViewTab; label: string }[] = [
+  { id: 'timeline', label: 'Таймлайн' },
+  { id: 'risks', label: 'Риски' },
+  { id: 'graph', label: 'Граф связей' },
+  { id: 'table', label: 'Задачи' },
+  { id: 'team', label: 'Команда' },
+  { id: 'journal', label: 'Журнал' },
 ];
 
 export function ProjectPage({ id }: { id: string }) {
-  const { data, isLoading, error } = useProject(id);
+  const { data, isLoading, error, refetch, isRefetching } = useProject(id);
   const openProject = useDraft((s) => s.openProject);
   useEffect(() => openProject(id), [id, openProject]);
   const model = useProjectModel(data);
@@ -77,48 +82,124 @@ export function ProjectPage({ id }: { id: string }) {
   if (isLoading) return <ProjectSkeleton />;
   if (error || !model) {
     return (
-      <Empty
-        title="Проект не открылся"
-        action={
-          <Button variant="primary" onClick={() => navigate('/')}>
-            К списку проектов
-          </Button>
-        }
-      >
-        {error?.message ?? 'Нет данных'}
-      </Empty>
+      <div className="flex h-full items-center justify-center">
+        <Empty
+          title="Проект не загрузился"
+          action={
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => navigate('/')}>
+                Все проекты
+              </Button>
+              <Button variant="primary" onClick={() => refetch()} disabled={isRefetching}>
+                <RotateCcw size={15} /> Повторить
+              </Button>
+            </div>
+          }
+        >
+          {error?.message ?? 'Сервер не вернул данные проекта.'}
+        </Empty>
+      </div>
     );
   }
 
   return (
     <ModelContext.Provider value={model}>
-      <div className="flex h-full flex-col">
-        <TopBar />
-        <StatusStrip />
-        <div className="flex min-h-0 flex-1">
-          <MainView />
-          <SideColumn />
-        </div>
-      </div>
+      <ProjectLayout />
       <EventHost />
       <CompareHost />
     </ModelContext.Provider>
   );
 }
 
+/**
+ * Каркас страницы. На широком экране боковая колонка стоит рядом с видом,
+ * на узком — открывается шторкой; пока шторка открыта, остальная страница inert.
+ */
+function ProjectLayout() {
+  const wide = useMediaQuery(WIDE_LAYOUT);
+  const selectedTaskId = useDraft((s) => s.selectedTaskId);
+  const side = useDraft((s) => s.side);
+  const select = useDraft((s) => s.select);
+  const hasDraft = useDraft((s) => s.ops.length > 0);
+  // «Обзор» — панель без выбранной задачи; на узком экране открывается по запросу.
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const sheetOpen = !wide && (selectedTaskId !== null || side !== 'auto' || overviewOpen);
+
+  const closeSheet = () => {
+    setOverviewOpen(false);
+    select(null);
+  };
+
+  return (
+    <>
+      <div
+        className={cx('flex h-full flex-col', !wide && hasDraft && !sheetOpen && 'pb-[124px]')}
+        inert={sheetOpen}
+      >
+        <TopBar />
+        <StatusStrip onOpenOverview={wide ? undefined : () => setOverviewOpen(true)} />
+        <div className="flex min-h-0 flex-1">
+          <MainView />
+          {wide && (
+            <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-surface xl:w-[400px]">
+              <SideColumn />
+            </aside>
+          )}
+        </div>
+      </div>
+      {!wide && (
+        <>
+          <Sheet open={sheetOpen} onClose={closeSheet} label={sheetLabel(selectedTaskId, side)}>
+            <SideColumn />
+          </Sheet>
+          {hasDraft && !sheetOpen && (
+            <div className="animate-toast-in fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface">
+              <DraftBar compact onDetails={() => setOverviewOpen(true)} />
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function sheetLabel(selectedTaskId: string | null, side: string): string {
+  if (side === 'advisor') return 'Советник по срокам';
+  if (side === 'project') return 'Параметры проекта';
+  return selectedTaskId ? 'Задача' : 'Обзор проекта';
+}
+
 function ProjectSkeleton() {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-14 items-center gap-3 border-b border-line bg-surface px-4">
-        <WaveMark />
-        <Skeleton className="h-5 w-64" />
-        <Skeleton className="ml-auto h-8 w-96" />
+    <div className="flex h-full flex-col" aria-busy="true" aria-label="Загрузка проекта">
+      <div className="flex h-[52px] shrink-0 items-center gap-3 border-b border-line bg-surface px-3 xl:px-4">
+        <WaveMark animated={false} />
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="ml-auto hidden h-4 w-96 md:block" />
+        <Skeleton className="ml-auto h-8 w-24 md:ml-0" />
       </div>
-      <div className="h-[84px] bg-ink" />
-      <div className="flex-1 space-y-3 p-6">
-        {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-7" />
-        ))}
+      <div className="h-[92px] shrink-0 bg-ink px-6 pt-4">
+        <div className="h-4 w-40 rounded-md bg-white/10" />
+        <div className="mt-3 h-3 w-72 rounded-md bg-white/5" />
+      </div>
+      <div className="flex min-h-0 flex-1 bg-surface">
+        <div className="flex-1">
+          <div className="h-[52px] border-b border-line" />
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="flex h-10 items-center gap-4 border-b border-line-soft px-4">
+              <Skeleton className="h-3 w-40 shrink-0" />
+              <Skeleton
+                className="h-[18px]"
+                style={{ marginLeft: `${8 + i * 6}%`, width: `${10 + ((i * 7) % 14)}%` }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="hidden w-[360px] border-l border-line p-5 lg:block xl:w-[400px]">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="mt-4 h-16" />
+          <Skeleton className="mt-3 h-10" />
+        </div>
       </div>
     </div>
   );
@@ -128,144 +209,140 @@ function TopBar() {
   const { state } = useModel();
   const reset = useResetDemo();
   const setSide = useDraft((s) => s.setSide);
-  const select = useDraft((s) => s.select);
-  const propose = usePropose();
+  const addTask = useAddTask();
   const isDemo = state.project.id === 'demo';
 
-  const addTask = () => {
-    const id = newId();
-    const ok = propose({
-      type: 'createTask',
-      task: {
-        id,
-        projectId: state.project.id,
-        name: `Задача ${state.tasks.length + 1}`,
-        description: '',
-        durationDays: 3,
-        status: 'not_started',
-        assigneeId: null,
-        dueDate: null,
-        startNotEarlier: null,
-        actualStart: null,
-        actualEnd: null,
-        sortOrder: Math.max(0, ...state.tasks.map((t) => t.sortOrder)) + 1,
-      },
-    });
-    if (ok) select(id);
-  };
-
   return (
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 xl:px-4">
-      <a
-        href="#/"
-        className="flex shrink-0 items-center gap-2 rounded-xl p-1 transition-colors hover:bg-ink/5 xl:pr-2.5"
-        aria-label="Все проекты"
-        title="Все проекты"
-      >
-        <WaveMark />
-        <span className="hidden font-display font-semibold xl:inline">Волна</span>
-      </a>
-      <span className="text-line" aria-hidden>
-        /
-      </span>
+    <header className="relative z-30 shrink-0 border-b border-line bg-surface">
+      <div className="flex h-[52px] items-center gap-1 px-2 md:gap-2 md:px-3 xl:px-4">
+        <Tooltip content="Все проекты" describe={false}>
+          <a
+            href="#/"
+            className="flex shrink-0 items-center gap-2 rounded-lg p-1 transition-colors duration-150 hover:bg-sunken active:bg-pressed xl:pr-2.5"
+            aria-label="Все проекты"
+          >
+            <WaveMark />
+            <span className="hidden font-display font-semibold xl:inline">Волна</span>
+          </a>
+        </Tooltip>
+        <span className="hidden text-line-strong md:inline" aria-hidden>
+          /
+        </span>
 
-      <Popover
-        label="Меню проекта"
-        buttonClassName="flex max-w-[200px] min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-colors hover:bg-ink/5 aria-expanded:bg-ink/5 xl:max-w-[280px] 2xl:max-w-[440px]"
-        button={(open) => (
-          <>
-            <span className="min-w-0">
-              <span className="block truncate text-[14px] leading-5 font-semibold">
-                {state.project.name}
-              </span>
-              <span className="block truncate text-[12px] leading-4 text-ink-3">
-                {fmtDate(state.project.startDate)} — {fmtDate(state.project.deadline)}
-              </span>
-            </span>
-            <ChevronDown
-              size={15}
-              className={cx(
-                'shrink-0 text-ink-3 transition-transform duration-200',
-                open && 'rotate-180',
-              )}
-            />
-          </>
-        )}
-        panelClassName="w-80"
-      >
-        {(close) => (
-          <>
-            {state.project.description && (
-              <p className="px-3 pt-2 pb-2.5 text-[13px] leading-snug text-ink-2">
-                {state.project.description}
-              </p>
+        <div className="min-w-0 flex-1 lg:flex-initial">
+          <Popover
+            label="Меню проекта"
+            buttonClassName="flex w-full max-w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors duration-150 hover:bg-sunken active:bg-pressed aria-expanded:bg-sunken md:w-auto lg:max-w-[220px] xl:max-w-[300px] 2xl:max-w-[440px]"
+            button={(open) => (
+              <>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm leading-5 font-semibold">
+                    {state.project.name}
+                  </span>
+                  <span className="block truncate text-[12px] leading-4 text-ink-3">
+                    {fmtDate(state.project.startDate)} — {fmtDate(state.project.deadline)}
+                  </span>
+                </span>
+                <ChevronDown
+                  size={15}
+                  className={cx(
+                    'shrink-0 text-ink-3 transition-transform duration-200',
+                    open && 'rotate-180',
+                  )}
+                />
+              </>
             )}
-            <MenuItem
-              icon={<Settings2 size={16} />}
-              hint="Название, старт и дедлайн"
-              onClick={() => {
-                close();
-                setSide('project');
-              }}
-            >
-              Параметры проекта
-            </MenuItem>
-            {isDemo && (
-              <MenuItem
-                icon={<RotateCcw size={16} />}
-                hint="Вернуть исходный план и очистить журнал"
-                onClick={async () => {
-                  close();
-                  const ok = await confirmAction({
-                    title: 'Сбросить демо-проект?',
-                    text: 'Все изменения и журнал будут удалены, план вернётся к исходному состоянию.',
-                    confirmLabel: 'Сбросить демо',
-                    danger: true,
-                  });
-                  if (ok) reset.mutate();
-                }}
-              >
-                Сбросить демо
-              </MenuItem>
+            panelClassName="w-80 max-w-[calc(100vw-16px)]"
+          >
+            {(close) => (
+              <>
+                {state.project.description && (
+                  <p className="px-2.5 pt-2 pb-2 text-[13px] leading-snug text-ink-2">
+                    {state.project.description}
+                  </p>
+                )}
+                <MenuItem
+                  icon={<Settings2 size={16} />}
+                  hint="Название, старт и дедлайн"
+                  onClick={() => {
+                    close();
+                    setSide('project');
+                  }}
+                >
+                  Параметры проекта
+                </MenuItem>
+                {isDemo && (
+                  <MenuItem
+                    icon={<RotateCcw size={16} />}
+                    hint="Вернуть исходный план и очистить журнал"
+                    onClick={async () => {
+                      close();
+                      const ok = await confirmAction({
+                        title: 'Сбросить демо-проект?',
+                        text: 'Все изменения и журнал будут удалены, план вернётся к исходному состоянию.',
+                        confirmLabel: 'Сбросить демо',
+                        danger: true,
+                      });
+                      if (ok) reset.mutate();
+                    }}
+                  >
+                    Сбросить демо
+                  </MenuItem>
+                )}
+                <div className="mx-2.5 my-1 border-t border-line-soft" />
+                <MenuItem icon={<FolderOpen size={16} />} onClick={() => navigate('/')}>
+                  Все проекты
+                </MenuItem>
+              </>
             )}
-            <div className="mx-3 my-1 border-t border-line/70" />
-            <MenuItem icon={<FolderOpen size={16} />} onClick={() => navigate('/')}>
-              Все проекты
-            </MenuItem>
-          </>
-        )}
-      </Popover>
+          </Popover>
+        </div>
 
-      <Tabs />
+        <Tabs className="mx-auto hidden lg:flex" />
 
-      <VariantsButton />
-      <EventsMenu />
-      <Button
-        variant="primary"
-        size="sm"
-        className="h-8 shrink-0 px-2.5 xl:px-3"
-        onClick={addTask}
-        aria-label="Новая задача"
-      >
-        <Plus size={15} /> <span className="hidden xl:inline">Задача</span>
-      </Button>
+        <VariantsButton />
+        <EventsMenu />
+        <Tooltip content="Новая задача" describe={false}>
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-8 shrink-0 px-0 xl:w-auto xl:px-3"
+            onClick={addTask}
+            aria-label="Новая задача"
+          >
+            <Plus size={16} /> <span className="hidden xl:inline">Задача</span>
+          </Button>
+        </Tooltip>
+      </div>
+      <Tabs className="flex border-t border-line-soft px-2 lg:hidden" />
     </header>
   );
 }
 
-function Tabs() {
+/**
+ * Вкладки вида. Подчёркивание переезжает к выбранной через transform — видно, куда переключились,
+ * и без пересчёта вёрстки. Стрелки влево/вправо переключают вкладки с клавиатуры.
+ */
+function Tabs({ className }: { className?: string }) {
   const tab = useDraft((s) => s.tab);
   const setTab = useDraft((s) => s.setTab);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const barRef = useRef<HTMLSpanElement>(null);
 
-  // Подложка активной вкладки переезжает к выбранной — видно, куда переключились.
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (!list) return;
+    const bar = barRef.current;
+    if (!list || !bar) return;
+    let first = true;
     const measure = () => {
       const el = list.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
-      if (el) setPill({ left: el.offsetLeft, width: el.offsetWidth });
+      if (!el || el.offsetWidth === 0) return;
+      // Первый замер без перехода, чтобы полоска не «прилетала» из левого края.
+      bar.style.transition = first ? 'none' : '';
+      bar.style.transform = `translateX(${el.offsetLeft + 8}px) scaleX(${el.offsetWidth - 16})`;
+      bar.style.opacity = '1';
+      first = false;
+      el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -273,20 +350,26 @@ function Tabs() {
     return () => ro.disconnect();
   }, [tab]);
 
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    setTab(next.id);
+    listRef.current?.querySelector<HTMLElement>(`[data-tab="${next.id}"]`)?.focus();
+  };
+
   return (
     <nav
       ref={listRef}
       role="tablist"
       aria-label="Представление проекта"
-      className="relative mx-auto flex shrink-0 rounded-xl bg-ink/[0.05] p-1"
-    >
-      {pill && (
-        <span
-          aria-hidden
-          className="absolute top-1 bottom-1 rounded-lg bg-surface shadow-raised transition-[left,width] duration-300 ease-[var(--ease-out-soft)]"
-          style={{ left: pill.left, width: pill.width }}
-        />
+      onKeyDown={onKeyDown}
+      className={cx(
+        'relative shrink-0 self-stretch overflow-x-auto [scrollbar-width:none]',
+        className,
       )}
+    >
       {TABS.map((t) => (
         <button
           key={t.id}
@@ -294,16 +377,21 @@ function Tabs() {
           type="button"
           role="tab"
           aria-selected={tab === t.id}
+          tabIndex={tab === t.id ? 0 : -1}
           onClick={() => setTab(t.id)}
           className={cx(
-            'relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] xl:px-3 font-medium transition-colors',
-            tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink-2',
+            'relative flex h-11 shrink-0 items-center rounded-lg px-3 text-sm focus-visible:outline-offset-[-8px] font-medium whitespace-nowrap transition-colors duration-150 lg:h-full lg:px-2.5 xl:px-3',
+            tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink',
           )}
         >
-          <t.icon size={15} className="hidden 2xl:block" />
           {t.label}
         </button>
       ))}
+      <span
+        ref={barRef}
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 h-0.5 w-px origin-left bg-cobalt opacity-0 transition-transform duration-200 ease-[var(--ease-out-soft)]"
+      />
     </nav>
   );
 }
@@ -318,6 +406,27 @@ function MainView() {
   );
 }
 
+function GraphSkeleton() {
+  return (
+    <div
+      className="flex flex-col items-center gap-5 p-8"
+      aria-busy="true"
+      aria-label="Загрузка графа"
+    >
+      <Skeleton className="h-16 w-56" />
+      <div className="flex gap-6">
+        <Skeleton className="h-16 w-56" />
+        <Skeleton className="h-16 w-56" />
+      </div>
+      <Skeleton className="h-16 w-56" />
+      <div className="flex gap-6">
+        <Skeleton className="h-16 w-56" />
+        <Skeleton className="h-16 w-56" />
+      </div>
+    </div>
+  );
+}
+
 function CurrentView({ tab }: { tab: ViewTab }) {
   switch (tab) {
     case 'timeline':
@@ -326,7 +435,7 @@ function CurrentView({ tab }: { tab: ViewTab }) {
       return <RisksView />;
     case 'graph':
       return (
-        <Suspense fallback={<Skeleton className="m-6 h-[420px]" />}>
+        <Suspense fallback={<GraphSkeleton />}>
           <GraphView />
         </Suspense>
       );
@@ -339,24 +448,56 @@ function CurrentView({ tab }: { tab: ViewTab }) {
   }
 }
 
+/**
+ * Содержимое боковой колонки: панель и закреплённый снизу черновик.
+ * Полная панель последствий открывается по «Подробнее» и живёт, пока не сменилась задача или панель.
+ */
 function SideColumn() {
-  const ref = useRef<HTMLDivElement>(null);
-  const hasDraft = useDraft((s) => s.ops.length > 0);
   const side = useDraft((s) => s.side);
   const selectedTaskId = useDraft((s) => s.selectedTaskId);
-  // Когда появляется черновик или открывается советник — показываем панель с начала.
+  const hasDraft = useDraft((s) => s.ops.length > 0);
+  const panelKey = `${side}:${selectedTaskId ?? ''}`;
+  const [impactFor, setImpactFor] = useState<string | null>(null);
+  const showImpact = hasDraft && impactFor === panelKey;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Другая задача или панель — начинаем с её верха, а не с места, где остановились в прошлой.
   useEffect(() => {
-    if (hasDraft || side === 'advisor') ref.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [hasDraft, side]);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [panelKey]);
+
+  const openImpact = () => {
+    setImpactFor(panelKey);
+    scrollRef.current?.scrollTo({ top: 0 });
+  };
+
   return (
-    <aside className="w-[360px] shrink-0 border-l border-line bg-surface xl:w-[420px]">
-      <div ref={ref} className="flex h-full flex-col overflow-y-auto">
-        <div key={`${side}:${selectedTaskId ?? ''}`} className="animate-view-in flex-1">
-          <SidePanel />
+    <>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div key={showImpact ? 'impact' : panelKey} className="animate-view-in">
+          {showImpact ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setImpactFor(null)}
+                className="mx-3 mt-3 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-sunken hover:text-ink active:bg-pressed"
+              >
+                <ArrowLeft size={15} />
+                {selectedTaskId ? 'К задаче' : side === 'auto' ? 'Назад' : 'К панели'}
+              </button>
+              <ImpactPanel />
+            </>
+          ) : (
+            <SidePanel />
+          )}
         </div>
-        {hasDraft && <DraftBar />}
       </div>
-    </aside>
+      {/* Без выбранной задачи панель последствий и так открыта — «Подробнее» не нужно. */}
+      {hasDraft && (
+        <DraftBar
+          onDetails={showImpact || (side === 'auto' && !selectedTaskId) ? undefined : openImpact}
+        />
+      )}
+    </>
   );
 }
 
@@ -365,21 +506,11 @@ function SidePanel() {
   const selectedTaskId = useDraft((s) => s.selectedTaskId);
   const { impact, state } = useModel();
   if (side === 'advisor') return <AdvisorPanel />;
-  if (side === 'project') {
-    return (
-      <div className="divide-y divide-line">
-        {impact && <ImpactPanel />}
-        <ProjectSettings />
-      </div>
-    );
-  }
+  if (side === 'project') return <ProjectSettings />;
   const selected = state.tasks.find((t) => t.id === selectedTaskId);
-  return (
-    <div className="divide-y divide-line">
-      {impact && <ImpactPanel />}
-      {selected ? <TaskEditor key={selected.id} task={selected} /> : !impact && <AttentionPanel />}
-    </div>
-  );
+  if (selected) return <TaskEditor key={selected.id} task={selected} />;
+  // Без выбранной задачи главное — последствия черновика, а если его нет — на что обратить внимание.
+  return impact ? <ImpactPanel /> : <AttentionPanel />;
 }
 
 /** Кнопка сравнения вариантов: появляется, когда есть что сравнивать. */
@@ -388,23 +519,30 @@ function VariantsButton() {
   const setCompareOpen = useDraft((s) => s.setCompareOpen);
   if (count === 0) return null;
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="h-8 shrink-0"
-      onClick={() => setCompareOpen(true)}
-      title="Сравнить сохранённые варианты"
-      aria-label={`Сравнить варианты: ${count}`}
-    >
-      <Columns3 size={15} />
-      <span className="hidden 2xl:inline">Варианты ·</span> {count}
-    </Button>
+    <Tooltip content="Сравнить сохранённые варианты" describe={false}>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="shrink-0 px-2"
+        onClick={() => setCompareOpen(true)}
+        aria-label={`Сравнить варианты: ${count}`}
+      >
+        <Columns3 size={15} />
+        <span className="hidden 2xl:inline">Варианты</span>
+        <span className="rounded-md bg-sunken px-1.5 text-[12px] leading-5 text-ink-2">
+          {count}
+        </span>
+      </Button>
+    </Tooltip>
   );
 }
 
-/** Закреплённая панель черновика: применить или отменить можно из любого места боковой колонки. */
-function DraftBar() {
-  const { base, ops } = useModel();
+/**
+ * Закреплённая панель черновика: коротко — что будет с проектом, и кнопки «Отменить» / «Применить».
+ * Полный разбор — по «Подробнее», чтобы редактор задачи не сдвигался при каждой правке.
+ */
+function DraftBar({ compact, onDetails }: { compact?: boolean; onDetails?: () => void }) {
+  const { base, ops, impact, forecast, baseForecast } = useModel();
   const reason = useDraft((s) => s.reason);
   const lastAction = useDraft((s) => s.lastAction);
   const setReason = useDraft((s) => s.setReason);
@@ -414,6 +552,7 @@ function DraftBar() {
   const apply = useApplyChanges(base.project.id);
   const n = ops.length;
   const saved = scenarios.find((s) => sameOps(s.ops, ops));
+  const v = impact ? VERDICT[impact.verdict] : null;
 
   const save = () => {
     const full = scenarios.length >= SCENARIO_LETTERS.length;
@@ -425,37 +564,89 @@ function DraftBar() {
     toast(
       full
         ? `Сохранено как вариант ${letter}, самый старый вариант удалён`
-        : `Сохранено как вариант ${letter}. Отмените черновик и соберите следующий — или сравните`,
+        : `Сохранено как вариант ${letter}. Отмените черновик и соберите следующий или сравните`,
       'success',
     );
   };
 
   return (
-    <div className="glass animate-toast-in sticky bottom-0 z-10 border-t border-line/80 px-5 pt-3 pb-4">
-      <div className="flex items-center gap-2 text-[12px] text-ink-2">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-wave" />
-        <span className="flex-1">
-          Черновик: {n} {plural(n, 'изменение', 'изменения', 'изменений')}, план ещё не изменён
-        </span>
-        <button
-          type="button"
-          onClick={save}
-          disabled={saved !== undefined}
-          title="Сохранить черновик, чтобы сравнить с другими вариантами"
-          className="-my-1 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 font-medium text-ink-2 transition-colors hover:bg-ink/5 hover:text-ink disabled:text-ink-3 disabled:hover:bg-transparent"
+    <div
+      className={cx(
+        'shrink-0 border-t border-line bg-surface px-4 pt-3 pb-4 md:px-5',
+        !compact && 'animate-toast-in',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {v && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: v.color }} />}
+        <p
+          className="min-w-0 flex-1 truncate text-[13px] font-semibold"
+          style={{ color: v?.color }}
         >
-          <BookmarkPlus size={14} />
-          {saved ? `Вариант ${saved.letter}` : 'В варианты'}
-        </button>
+          {v?.title ?? 'Черновик'}
+        </p>
+        <Tooltip content="Сохранить черновик, чтобы сравнить с другими вариантами" describe={false}>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saved !== undefined}
+            aria-label={saved ? `Сохранён как вариант ${saved.letter}` : 'Сохранить в варианты'}
+            className="-my-1 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-sunken hover:text-ink active:bg-pressed disabled:text-ink-3 disabled:hover:bg-transparent"
+          >
+            <BookmarkPlus size={14} />
+            {saved ? `Вариант ${saved.letter}` : 'В варианты'}
+          </button>
+        </Tooltip>
       </div>
-      <input
-        className={inputClass + ' mt-2.5 bg-surface/80'}
-        placeholder="Причина, например «подрядчик сдвинул старт»"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        aria-label="Причина изменения"
-      />
-      <div className="mt-2.5 flex gap-2">
+
+      {impact && (
+        <dl className="mt-2 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-0.5 text-[13px]">
+          <dt className="text-ink-3">Финиш</dt>
+          <dd>
+            {fmtDate(impact.finishBefore)} → {fmtDate(impact.finishAfter)}
+            {impact.finishDelta !== 0 && (
+              <span
+                className={cx(
+                  'ml-1.5 font-semibold',
+                  impact.finishDelta > 0 ? 'text-crimson' : 'text-moss',
+                )}
+              >
+                {fmtDays(impact.finishDelta, true)}
+              </span>
+            )}
+          </dd>
+          {onDetails ? (
+            <dd className="row-span-2 self-center">
+              <button
+                type="button"
+                onClick={onDetails}
+                className="rounded-md px-1.5 py-1 text-[13px] font-medium text-cobalt transition-colors duration-150 hover:bg-cobalt-soft active:bg-cobalt-soft"
+              >
+                Подробнее
+              </button>
+            </dd>
+          ) : (
+            <dd className="row-span-2" />
+          )}
+          <dt className="text-ink-3">Шанс успеть</dt>
+          <dd>
+            {fmtChance(baseForecast.chance)} → {fmtChance(forecast.chance)}
+          </dd>
+        </dl>
+      )}
+      <p className="mt-1 text-[12px] leading-4 text-ink-3">
+        {n} {plural(n, 'изменение', 'изменения', 'изменений')} в черновике, план ещё не изменён
+      </p>
+
+      {!compact && (
+        <input
+          className={inputClass + ' mt-3'}
+          placeholder="Причина, например «подрядчик сдвинул старт»"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          aria-label="Причина изменения для журнала"
+        />
+      )}
+      <div className="mt-3 flex gap-2">
         <Button variant="secondary" onClick={clearDraft} className="flex-1">
           <Undo2 size={15} /> Отменить
         </Button>
@@ -465,7 +656,7 @@ function DraftBar() {
           disabled={apply.isPending}
           onClick={() => apply.mutate({ ops, reason: reason.trim() || undefined })}
         >
-          <Check size={15} /> Применить изменения
+          <Check size={15} /> {apply.isPending ? 'Применяем…' : 'Применить'}
         </Button>
       </div>
     </div>

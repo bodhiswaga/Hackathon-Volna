@@ -73,13 +73,15 @@ export function EventsMenu() {
     <Popover
       label="Что случилось? Смоделировать событие"
       align="end"
-      buttonClassName="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[13px] font-semibold whitespace-nowrap text-ink transition-colors hover:border-ink-3 aria-expanded:border-ink-3"
+      buttonClassName="flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface text-[13px] font-medium whitespace-nowrap text-ink transition-colors duration-150 hover:border-line-strong hover:bg-sunken active:bg-pressed aria-expanded:bg-sunken md:w-auto md:px-3"
+      iconOnly
       button={
         <>
-          <Zap size={15} className="text-ink-2" /> Что случилось?
+          <Zap size={15} className="text-ink-2" />
+          <span className="hidden md:inline">Что случилось?</span>
         </>
       }
-      panelClassName="w-[340px]"
+      panelClassName="w-[340px] max-w-[calc(100vw-16px)]"
     >
       {(close) => (
         <>

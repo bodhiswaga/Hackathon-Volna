@@ -144,31 +144,42 @@ export const useDraft = create<DraftStore>((set, get) => ({
   setCompareOpen: (compareOpen) => set({ compareOpen }),
 }));
 
-interface Toast {
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export interface Toast {
   id: number;
   text: string;
   tone: 'info' | 'error' | 'success';
+  action?: ToastAction;
 }
 
 interface ToastStore {
   toasts: Toast[];
-  push: (text: string, tone?: Toast['tone']) => void;
+  push: (text: string, tone?: Toast['tone'], options?: { action?: ToastAction }) => void;
   dismiss: (id: number) => void;
 }
 
 let toastSeq = 0;
+/** Больше трёх уведомлений разом не читаются — старые уступают место. */
+const MAX_TOASTS = 3;
 
+// Таймер скрытия живёт в самом тосте (пауза при наведении), здесь только список.
 export const useToasts = create<ToastStore>((set) => ({
   toasts: [],
-  push: (text, tone = 'info') => {
+  push: (text, tone = 'info', options) => {
     const id = ++toastSeq;
-    set((s) => ({ toasts: [...s.toasts, { id, text, tone }] }));
-    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 4200);
+    set((s) => ({
+      toasts: [...s.toasts, { id, text, tone, action: options?.action }].slice(-MAX_TOASTS),
+    }));
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-export const toast = (text: string, tone?: Toast['tone']) => useToasts.getState().push(text, tone);
+export const toast = (text: string, tone?: Toast['tone'], options?: { action?: ToastAction }) =>
+  useToasts.getState().push(text, tone, options);
 
 export interface ConfirmOptions {
   title: string;

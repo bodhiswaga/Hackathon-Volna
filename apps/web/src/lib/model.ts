@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useMemo } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   analyze,
   applyChangeSet,
@@ -14,7 +22,7 @@ import {
   type Threat,
 } from '@volna/engine';
 import { toast, useDraft } from '../store/draft';
-import { todayISO } from './format';
+import { newId, todayISO } from './format';
 
 export interface ProjectModel {
   /** Состояние с сервера. */
@@ -101,6 +109,45 @@ export function usePropose() {
   );
 }
 
+// Задача, которую только что создали: редактор откроется с выделенным названием, чтобы сразу его ввести.
+let focusNameOf: string | null = null;
+export function takeNameFocus(taskId: string): boolean {
+  if (focusNameOf !== taskId) return false;
+  focusNameOf = null;
+  return true;
+}
+
+/** Новая задача на 3 дня в конце плана: попадает в черновик и сразу открывается в редакторе. */
+export function useAddTask() {
+  const { state } = useModel();
+  const propose = usePropose();
+  const select = useDraft((s) => s.select);
+  return useCallback(() => {
+    const id = newId();
+    const ok = propose({
+      type: 'createTask',
+      task: {
+        id,
+        projectId: state.project.id,
+        name: `Задача ${state.tasks.length + 1}`,
+        description: '',
+        durationDays: 3,
+        status: 'not_started',
+        assigneeId: null,
+        dueDate: null,
+        startNotEarlier: null,
+        actualStart: null,
+        actualEnd: null,
+        sortOrder: Math.max(0, ...state.tasks.map((t) => t.sortOrder)) + 1,
+      },
+    });
+    if (ok) {
+      focusNameOf = id;
+      select(id);
+    }
+  }, [propose, select, state.project.id, state.tasks]);
+}
+
 /**
  * Как `usePropose`, но запоминает, что это было за действие (имя варианта по умолчанию),
  * и подставляет причину для журнала, если руководитель не ввёл свою.
@@ -116,4 +163,34 @@ export function useProposeAction() {
     },
     [propose],
   );
+}
+
+export interface RecalcFlash {
+  /** Задачи, у которых после последнего пересчёта сменились даты (или которые только что появились). */
+  ids: ReadonlySet<string>;
+  /** Меняется при каждой вспышке — ключ, чтобы анимация проигрывалась заново. */
+  stamp: number;
+}
+
+const NO_FLASH: RecalcFlash = { ids: new Set(), stamp: 0 };
+
+/**
+ * Какие задачи коротко подсветить после пересчёта: сравнивает даты с прошлым анализом.
+ * При первом показе вида ничего не подсвечивает — вспышка только в ответ на изменение.
+ */
+export function useRecalcFlash(analysis: Analysis): RecalcFlash {
+  const prev = useRef<Map<string, string> | null>(null);
+  const [flash, setFlash] = useState<RecalcFlash>(NO_FLASH);
+  useEffect(() => {
+    const next = new Map(
+      Object.entries(analysis.tasks).map(([id, t]) => [id, `${t.startDate}|${t.endDate}`]),
+    );
+    const before = prev.current;
+    prev.current = next;
+    if (!before) return;
+    const ids = new Set<string>();
+    for (const [id, dates] of next) if (before.get(id) !== dates) ids.add(id);
+    if (ids.size > 0) setFlash((f) => ({ ids, stamp: f.stamp + 1 }));
+  }, [analysis]);
+  return flash;
 }
