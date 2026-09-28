@@ -6,6 +6,10 @@
     "packages/*",
     "apps/*"
   ],
+  "engines": {
+    "node": ">=22.13",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev -w @volna/server\" \"npm:dev -w @volna/web\"",
     "test": "npm test -w @volna/engine",
