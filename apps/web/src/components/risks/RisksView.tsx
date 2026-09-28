@@ -94,7 +94,7 @@ function ForecastSection() {
                     className="grid grid-cols-[minmax(0,1fr)_120px_40px] items-center gap-3"
                   >
                     <span className="truncate">{names.get(d.taskId)}</span>
-                    <span className="h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
+                    <span className="h-1.5 overflow-hidden rounded-full bg-sunken">
                       <span
                         className="block h-full rounded-full bg-ink"
                         style={{ width: `${d.share * 100}%` }}
@@ -236,7 +236,7 @@ const Histogram = memo(function Histogram({
               </div>
               {deadlineInRange && b.index === deadlineIndex && (
                 <span className="pointer-events-none absolute top-[-8px] -right-[5px] bottom-0 border-r-2 border-dashed border-crimson">
-                  <span className="absolute top-[-12px] left-1.5 text-[11px] font-medium whitespace-nowrap text-crimson">
+                  <span className="absolute top-[-12px] left-1.5 text-[12px] font-medium whitespace-nowrap text-crimson">
                     дедлайн
                   </span>
                 </span>
@@ -246,7 +246,7 @@ const Histogram = memo(function Histogram({
         })}
       </div>
       <div
-        className="mt-1.5 grid gap-1.5 border-t border-line pt-1.5 text-[11px] leading-4 text-ink-3"
+        className="mt-1.5 grid gap-1.5 border-t border-line pt-1.5 text-[12px] leading-4 text-ink-3"
         style={{ gridTemplateColumns: `repeat(${bins.length}, minmax(0, 1fr))` }}
         aria-hidden
       >
@@ -294,7 +294,7 @@ function StormTest() {
 
   return (
     <section aria-labelledby="storm-title">
-      <h2 id="storm-title" className="font-display text-[17px] font-semibold">
+      <h2 id="storm-title" className="text-base font-semibold">
         Шторм-тест
       </h2>
       <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
@@ -302,7 +302,7 @@ function StormTest() {
         увидеть волну.
       </p>
       {threats.length === 0 ? (
-        <p className="mt-4 rounded-2xl bg-moss-soft px-4 py-3 text-[13px] text-moss">
+        <p className="mt-4 rounded-lg border border-moss/25 bg-moss-soft px-4 py-3 text-[13px] text-moss">
           Типовые сбои не сдвигают финиш: у плана хороший запас прочности.
         </p>
       ) : (
@@ -311,7 +311,7 @@ function StormTest() {
             const Icon = THREAT_ICON[t.kind];
             return (
               <li key={t.id} className="flex items-start gap-3 py-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-ink/[0.05] text-ink-2">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sunken text-ink-2">
                   <Icon size={16} />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -357,7 +357,7 @@ function Margins() {
 
   return (
     <section aria-labelledby="margin-title">
-      <h2 id="margin-title" className="font-display text-[17px] font-semibold">
+      <h2 id="margin-title" className="text-base font-semibold">
         Запас прочности
       </h2>
       <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
@@ -371,10 +371,10 @@ function Margins() {
               <button
                 type="button"
                 onClick={() => select(m.taskId)}
-                className="grid w-full grid-cols-[minmax(0,1fr)_96px_64px] items-center gap-3 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-ink/[0.04]"
+                className="grid w-full grid-cols-[minmax(0,1fr)_96px_64px] items-center gap-3 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors duration-150 hover:bg-sunken active:bg-pressed"
               >
                 <span className="truncate">{names.get(m.taskId)}</span>
-                <span className="h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
+                <span className="h-1.5 overflow-hidden rounded-full bg-sunken">
                   <span
                     className={cx('block h-full rounded-full', tone)}
                     style={{ width: `${Math.max(4, (Math.max(0, m.days) / scale) * 100)}%` }}

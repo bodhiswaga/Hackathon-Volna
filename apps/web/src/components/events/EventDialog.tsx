@@ -189,6 +189,14 @@ function EventDialog({ request }: { request: EventRequest }) {
         hint: 'Опишите новую работу — последствия появятся здесь.',
       };
     }
+    if (fieldError(event, state.project.startDate)) {
+      return {
+        compiled: null,
+        error: null,
+        result: null,
+        hint: 'Исправьте поле выше — последствия появятся здесь.',
+      };
+    }
     try {
       const compiled = compileEvent(state, today, event, newId);
       if (compiled.ops.length === 0) {
@@ -249,10 +257,10 @@ function EventDialog({ request }: { request: EventRequest }) {
         }}
       >
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink/[0.05] text-ink-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sunken text-ink-2">
             <meta.icon size={18} />
           </span>
-          <h2 id="event-title" className="font-display text-lg font-semibold">
+          <h2 id="event-title" className="text-lg font-semibold">
             {meta.title}
           </h2>
         </div>
@@ -263,8 +271,10 @@ function EventDialog({ request }: { request: EventRequest }) {
 
         <div
           className={cx(
-            'mt-5 rounded-2xl px-4 py-3 text-[13px] leading-relaxed',
-            preview.error ? 'bg-crimson-soft text-crimson' : 'bg-paper text-ink-2',
+            'mt-5 rounded-lg border px-4 py-3 text-[13px] leading-relaxed',
+            preview.error
+              ? 'border-crimson/30 bg-crimson-soft text-crimson'
+              : 'border-line bg-paper text-ink-2',
           )}
           aria-live="polite"
         >
@@ -306,7 +316,7 @@ function EventDialog({ request }: { request: EventRequest }) {
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={close}>
+          <Button variant="secondary" onClick={close}>
             Отмена
           </Button>
           <Button variant="primary" type="submit" disabled={!preview.result}>
@@ -316,6 +326,29 @@ function EventDialog({ request }: { request: EventRequest }) {
       </form>
     </Dialog>
   );
+}
+
+/** Ошибка конкретного поля: показывается под ним, а превью ждёт исправления. */
+function fieldError(
+  event: ProjectEvent,
+  projectStart: string,
+): { field: string; text: string } | null {
+  switch (event.kind) {
+    case 'absence':
+      if (!event.from) return { field: 'from', text: 'Укажите первый день' };
+      if (!event.to) return { field: 'to', text: 'Укажите последний день' };
+      if (event.to < event.from) return { field: 'to', text: 'Последний день раньше первого' };
+      return null;
+    case 'delay':
+      return event.until ? null : { field: 'until', text: 'Укажите дату' };
+    case 'deadline':
+      if (!event.deadline) return { field: 'deadline', text: 'Укажите дату' };
+      if (event.deadline < projectStart)
+        return { field: 'deadline', text: 'Дедлайн раньше старта проекта' };
+      return null;
+    default:
+      return null;
+  }
 }
 
 function EventFields({
@@ -328,6 +361,8 @@ function EventFields({
   const { state, analysis } = useModel();
   const open = openTasks(state);
   const waiting = waitingTasks(state);
+  const invalid = fieldError(event, state.project.startDate);
+  const err = (field: string) => (invalid?.field === field ? invalid.text : null);
 
   switch (event.kind) {
     case 'absence': {
@@ -356,23 +391,27 @@ function EventFields({
             </Select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="С">
-              <input
-                type="date"
-                className={inputClass}
-                value={event.from}
-                onChange={(e) => set({ from: e.target.value })}
-                required
-              />
+            <Field label="С" error={err('from')}>
+              {(a11y) => (
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={event.from}
+                  onChange={(e) => set({ from: e.target.value })}
+                  {...a11y}
+                />
+              )}
             </Field>
-            <Field label="По (включительно)">
-              <input
-                type="date"
-                className={inputClass}
-                value={event.to}
-                onChange={(e) => set({ to: e.target.value })}
-                required
-              />
+            <Field label="По (включительно)" error={err('to')}>
+              {(a11y) => (
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={event.to}
+                  onChange={(e) => set({ to: e.target.value })}
+                  {...a11y}
+                />
+              )}
             </Field>
           </div>
           <Field label="Что с задачами">
@@ -427,7 +466,7 @@ function EventFields({
                 type="number"
                 min={1}
                 max={200}
-                className={inputClass + ' w-24'}
+                className={inputClass + ' no-spin w-24'}
                 value={event.extraDays}
                 onChange={(e) => onChange({ ...event, extraDays: toDays(e.target.value) })}
                 data-autofocus
@@ -472,19 +511,22 @@ function EventFields({
           </Field>
           <Field
             label="Начнётся не раньше"
+            error={err('until')}
             hint={
               event.taskId
                 ? `По плану старт ${fmtDate(analysis.tasks[event.taskId].startDate)}`
                 : undefined
             }
           >
-            <input
-              type="date"
-              className={inputClass}
-              value={event.until}
-              onChange={(e) => onChange({ ...event, until: e.target.value })}
-              required
-            />
+            {(a11y) => (
+              <input
+                type="date"
+                className={inputClass}
+                value={event.until}
+                onChange={(e) => onChange({ ...event, until: e.target.value })}
+                {...a11y}
+              />
+            )}
           </Field>
         </>
       );
@@ -561,29 +603,31 @@ function EventFields({
     case 'deadline': {
       const current = state.project.deadline;
       return (
-        <Field label="Новый дедлайн" hint={`Сейчас ${fmtDate(current)}`}>
-          <div className="flex gap-2">
-            <input
-              type="date"
-              className={inputClass}
-              value={event.deadline}
-              onChange={(e) => onChange({ ...event, deadline: e.target.value })}
-              required
-            />
-            {[
-              { label: '−1 нед.', n: -5 },
-              { label: '+1 нед.', n: 5 },
-              { label: '+2 нед.', n: 10 },
-            ].map((o) => (
-              <Button
-                key={o.n}
-                className="shrink-0"
-                onClick={() => onChange({ ...event, deadline: addWorkdays(current, o.n) })}
-              >
-                {o.label}
-              </Button>
-            ))}
-          </div>
+        <Field label="Новый дедлайн" hint={`Сейчас ${fmtDate(current)}`} error={err('deadline')}>
+          {(a11y) => (
+            <div className="flex gap-2">
+              <input
+                type="date"
+                className={inputClass}
+                value={event.deadline}
+                onChange={(e) => onChange({ ...event, deadline: e.target.value })}
+                {...a11y}
+              />
+              {[
+                { label: '−1 нед.', n: -5 },
+                { label: '+1 нед.', n: 5 },
+                { label: '+2 нед.', n: 10 },
+              ].map((o) => (
+                <Button
+                  key={o.n}
+                  className="shrink-0"
+                  onClick={() => onChange({ ...event, deadline: addWorkdays(current, o.n) })}
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
+          )}
         </Field>
       );
     }

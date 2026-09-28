@@ -218,7 +218,7 @@ function CompareDialog() {
               className="relative block h-5"
               title={`Финиш ${fmtDate(m.finish)}, дедлайн ${fmtDate(m.deadline)}`}
             >
-              <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-ink/[0.07]" />
+              <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-sunken" />
               <span
                 className={cx(
                   'absolute top-1/2 h-1 -translate-y-1/2 rounded-full',
@@ -340,7 +340,7 @@ function CompareDialog() {
     <Dialog onClose={close} labelledBy="compare-title" width="max-w-[1040px]">
       <div className="flex items-start gap-3 px-6 pt-6">
         <div className="flex-1">
-          <h2 id="compare-title" className="font-display text-lg font-semibold">
+          <h2 id="compare-title" className="text-lg font-semibold">
             Сравнение вариантов
           </h2>
           <p className="mt-1 text-[13px] text-ink-2">
@@ -354,7 +354,7 @@ function CompareDialog() {
       </div>
 
       {columns.length < 2 ? (
-        <p className="m-6 rounded-2xl bg-paper px-4 py-3 text-[13px] text-ink-2">
+        <p className="m-6 rounded-lg border border-line bg-paper px-4 py-3 text-[13px] text-ink-2">
           Пока сравнивать не с чем. Соберите черновик и нажмите «В варианты» — или сохраните план
           советника.
         </p>
@@ -379,7 +379,7 @@ function CompareDialog() {
                     )}
                   >
                     {c.id === recommended && (
-                      <span className="absolute -top-3 left-3 rounded-full bg-moss px-2 py-0.5 text-[11px] font-semibold text-white">
+                      <span className="absolute -top-3 left-3 rounded-md bg-moss px-1.5 py-0.5 text-[12px] font-semibold text-white">
                         Выше шанс успеть
                       </span>
                     )}

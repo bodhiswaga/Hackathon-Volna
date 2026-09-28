@@ -17,7 +17,7 @@ async function copy(text: string, done: string) {
 /** Печать или сохранение в PDF: на странице остаётся только текущая вкладка (см. .print-area). */
 function PrintButton() {
   return (
-    <Button onClick={() => window.print()} title="Печать или сохранение в PDF">
+    <Button onClick={() => window.print()} aria-label="Печать или сохранение в PDF">
       <Printer size={15} /> Печать / PDF
     </Button>
   );
@@ -49,7 +49,7 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
     <Dialog onClose={onClose} labelledBy="brief-title" width="max-w-2xl">
       <div className="flex items-start gap-3 px-6 pt-6">
         <div className="flex-1">
-          <h2 id="brief-title" className="font-display text-lg font-semibold">
+          <h2 id="brief-title" className="text-lg font-semibold">
             Сообщить об изменении
           </h2>
           <p className="mt-1 text-[13px] text-ink-2">
@@ -77,7 +77,7 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
       <div className="px-6 pt-4 pb-6">
         {tab === 'client' ? (
           <>
-            <div className="print-area max-h-[52vh] overflow-y-auto rounded-2xl border border-line bg-paper/60 px-5 py-4">
+            <div className="print-area max-h-[52vh] overflow-y-auto rounded-lg border border-line bg-paper px-5 py-4">
               <p className="text-[13px] text-ink-3">
                 Тема: <span className="font-medium text-ink">{brief.subject}</span>
               </p>
@@ -98,7 +98,7 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
             <div className="mt-4 flex justify-end gap-2">
               <PrintButton />
               <a
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium transition-colors hover:border-ink-3"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 text-sm font-medium transition-colors duration-150 hover:border-line-strong hover:bg-sunken active:bg-pressed"
                 href={`mailto:?subject=${encodeURIComponent(brief.subject)}&body=${encodeURIComponent(brief.client)}`}
               >
                 <Mail size={15} /> Открыть в почте
@@ -113,14 +113,14 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
             </div>
           </>
         ) : brief.team.length === 0 ? (
-          <p className="rounded-2xl bg-paper px-4 py-3 text-[13px] text-ink-2">
+          <p className="rounded-lg border border-line bg-paper px-4 py-3 text-[13px] text-ink-2">
             Сроки и исполнители задач не меняются — команде сообщать нечего.
           </p>
         ) : (
           <>
             <ul className="print-area max-h-[52vh] space-y-2.5 overflow-y-auto">
               {brief.team.map((m) => (
-                <li key={m.personId} className="rounded-2xl border border-line px-4 py-3">
+                <li key={m.personId} className="rounded-lg border border-line px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Avatar person={people.get(m.personId)} />
                     <span className="flex-1 text-[13px] font-semibold">{m.name}</span>
