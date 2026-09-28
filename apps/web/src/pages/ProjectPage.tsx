@@ -1,6 +1,21 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, RotateCcw, Settings2 } from 'lucide-react';
-import { useProject, useResetDemo } from '../api/hooks';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  ChartGantt,
+  Check,
+  ChevronDown,
+  FolderOpen,
+  History,
+  Plus,
+  RotateCcw,
+  Settings2,
+  Table2,
+  Undo2,
+  Users,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
+import { plural } from '@volna/engine';
+import { useApplyChanges, useProject, useResetDemo } from '../api/hooks';
 import { AdvisorPanel } from '../components/advisor/AdvisorPanel';
 import { AttentionPanel } from '../components/AttentionPanel';
 import { GanttView } from '../components/gantt/GanttView';
@@ -11,23 +26,23 @@ import { StatusStrip } from '../components/StatusStrip';
 import { TaskTable } from '../components/table/TaskTable';
 import { TaskEditor } from '../components/task/TaskEditor';
 import { TeamView } from '../components/TeamView';
-import { Button, cx, Empty, WaveMark } from '../components/ui';
+import { Button, cx, Empty, inputClass, MenuItem, Popover, Skeleton, WaveMark } from '../components/ui';
 import { fmtDate, newId } from '../lib/format';
 import { ModelContext, useModel, usePropose, useProjectModel } from '../lib/model';
 import { navigate } from '../lib/router';
-import { useDraft, type ViewTab } from '../store/draft';
+import { confirmAction, useDraft, type ViewTab } from '../store/draft';
 
 // Граф (React Flow + dagre) — самая тяжёлая часть бандла, грузим его только при открытии вкладки.
 const GraphView = lazy(() =>
   import('../components/graph/GraphView').then((m) => ({ default: m.GraphView })),
 );
 
-const TABS: { id: ViewTab; label: string }[] = [
-  { id: 'timeline', label: 'Таймлайн' },
-  { id: 'graph', label: 'Граф связей' },
-  { id: 'table', label: 'Задачи' },
-  { id: 'journal', label: 'Журнал' },
-  { id: 'team', label: 'Команда' },
+const TABS: { id: ViewTab; label: string; icon: LucideIcon }[] = [
+  { id: 'timeline', label: 'Таймлайн', icon: ChartGantt },
+  { id: 'graph', label: 'Граф связей', icon: Workflow },
+  { id: 'table', label: 'Задачи', icon: Table2 },
+  { id: 'team', label: 'Команда', icon: Users },
+  { id: 'journal', label: 'Журнал', icon: History },
 ];
 
 export function ProjectPage({ id }: { id: string }) {
@@ -36,14 +51,18 @@ export function ProjectPage({ id }: { id: string }) {
   useEffect(() => openProject(id), [id, openProject]);
   const model = useProjectModel(data);
 
-  if (isLoading) return <p className="p-10 text-ink-3">Загружаем проект…</p>;
+  if (isLoading) return <ProjectSkeleton />;
   if (error || !model) {
     return (
-      <Empty title="Проект не открылся">
-        {error?.message ?? 'Нет данных'}.{' '}
-        <button className="text-cobalt underline" onClick={() => navigate('/')}>
-          К списку проектов
-        </button>
+      <Empty
+        title="Проект не открылся"
+        action={
+          <Button variant="primary" onClick={() => navigate('/')}>
+            К списку проектов
+          </Button>
+        }
+      >
+        {error?.message ?? 'Нет данных'}
       </Empty>
     );
   }
@@ -54,67 +73,39 @@ export function ProjectPage({ id }: { id: string }) {
         <TopBar />
         <StatusStrip />
         <div className="flex min-h-0 flex-1">
-          <main className="flex min-w-0 flex-1 flex-col">
-            <Tabs />
-            <div className="min-h-0 flex-1 overflow-auto">
-              <CurrentView />
-            </div>
-          </main>
+          <MainView />
           <SideColumn />
-
         </div>
       </div>
     </ModelContext.Provider>
   );
 }
 
-function TopBar() {
-  const { state } = useModel();
-  const reset = useResetDemo();
-  const side = useDraft((s) => s.side);
-  const setSide = useDraft((s) => s.setSide);
+function ProjectSkeleton() {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-6">
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        className="flex items-center gap-2 rounded-lg pr-2 text-ink-2 hover:text-ink"
-        aria-label="К списку проектов"
-      >
-        <ArrowLeft size={16} />
-        <WaveMark size={24} />
-      </button>
-      <div className="min-w-0">
-        <h1 className="truncate font-semibold leading-5">{state.project.name}</h1>
-        <p className="text-[12px] text-ink-3">
-          {fmtDate(state.project.startDate)} — {fmtDate(state.project.deadline)}
-          {state.project.description && `. ${state.project.description}`}
-        </p>
+    <div className="flex h-full flex-col">
+      <div className="flex h-14 items-center gap-3 border-b border-line bg-surface px-4">
+        <WaveMark />
+        <Skeleton className="h-5 w-64" />
+        <Skeleton className="ml-auto h-8 w-96" />
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setSide(side === 'project' ? 'auto' : 'project')}>
-          <Settings2 size={14} /> Параметры проекта
-        </Button>
-        {state.project.id === 'demo' && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (confirm('Пересоздать демо-проект? Все изменения и журнал будут сброшены.')) reset.mutate();
-            }}
-          >
-            <RotateCcw size={14} /> Сбросить демо
-          </Button>
-        )}
+      <div className="h-[84px] bg-ink" />
+      <div className="flex-1 space-y-3 p-6">
+        {Array.from({ length: 6 }, (_, i) => (
+          <Skeleton key={i} className="h-7" />
+        ))}
       </div>
-    </header>
+    </div>
   );
 }
 
-function Tabs() {
-  const { tab, setTab, select } = useDraft();
+function TopBar() {
   const { state } = useModel();
+  const reset = useResetDemo();
+  const setSide = useDraft((s) => s.setSide);
+  const select = useDraft((s) => s.select);
   const propose = usePropose();
+  const isDemo = state.project.id === 'demo';
 
   const addTask = () => {
     const id = newId();
@@ -139,36 +130,161 @@ function Tabs() {
   };
 
   return (
-    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-surface px-4">
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => setTab(t.id)}
-          className={cx(
-            'relative h-12 px-3 text-sm font-medium transition-colors',
-            tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink-2',
-          )}
-        >
-          {t.label}
-          {tab === t.id && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-ink" />}
-        </button>
-      ))}
-      <Button variant="primary" size="sm" className="ml-auto" onClick={addTask}>
-        <Plus size={14} /> Задача
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 xl:px-4">
+      <a
+        href="#/"
+        className="flex shrink-0 items-center gap-2 rounded-xl p-1 transition-colors hover:bg-ink/5 xl:pr-2.5"
+        aria-label="Все проекты"
+        title="Все проекты"
+      >
+        <WaveMark />
+        <span className="hidden font-display font-semibold xl:inline">Волна</span>
+      </a>
+      <span className="text-line" aria-hidden>
+        /
+      </span>
+
+      <Popover
+        label="Меню проекта"
+        buttonClassName="flex max-w-[260px] min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-colors hover:bg-ink/5 aria-expanded:bg-ink/5 xl:max-w-[360px] 2xl:max-w-[440px]"
+        button={(open) => (
+          <>
+            <span className="min-w-0">
+              <span className="block truncate text-[14px] leading-5 font-semibold">{state.project.name}</span>
+              <span className="block truncate text-[12px] leading-4 text-ink-3">
+                {fmtDate(state.project.startDate)} — {fmtDate(state.project.deadline)}
+              </span>
+            </span>
+            <ChevronDown
+              size={15}
+              className={cx('shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')}
+            />
+          </>
+        )}
+        panelClassName="w-80"
+      >
+        {(close) => (
+          <>
+            {state.project.description && (
+              <p className="px-3 pt-2 pb-2.5 text-[13px] leading-snug text-ink-2">{state.project.description}</p>
+            )}
+            <MenuItem
+              icon={<Settings2 size={16} />}
+              hint="Название, старт и дедлайн"
+              onClick={() => {
+                close();
+                setSide('project');
+              }}
+            >
+              Параметры проекта
+            </MenuItem>
+            {isDemo && (
+              <MenuItem
+                icon={<RotateCcw size={16} />}
+                hint="Вернуть исходный план и очистить журнал"
+                onClick={async () => {
+                  close();
+                  const ok = await confirmAction({
+                    title: 'Сбросить демо-проект?',
+                    text: 'Все изменения и журнал будут удалены, план вернётся к исходному состоянию.',
+                    confirmLabel: 'Сбросить демо',
+                    danger: true,
+                  });
+                  if (ok) reset.mutate();
+                }}
+              >
+                Сбросить демо
+              </MenuItem>
+            )}
+            <div className="mx-3 my-1 border-t border-line/70" />
+            <MenuItem icon={<FolderOpen size={16} />} onClick={() => navigate('/')}>
+              Все проекты
+            </MenuItem>
+          </>
+        )}
+      </Popover>
+
+      <Tabs />
+
+      <Button variant="primary" size="sm" className="h-8 shrink-0 px-3" onClick={addTask}>
+        <Plus size={15} /> Задача
       </Button>
-    </div>
+    </header>
   );
 }
 
-function CurrentView() {
+function Tabs() {
   const tab = useDraft((s) => s.tab);
+  const setTab = useDraft((s) => s.setTab);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+
+  // Подложка активной вкладки переезжает к выбранной — видно, куда переключились.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const measure = () => {
+      const el = list.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+      if (el) setPill({ left: el.offsetLeft, width: el.offsetWidth });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(list);
+    return () => ro.disconnect();
+  }, [tab]);
+
+  return (
+    <nav
+      ref={listRef}
+      role="tablist"
+      aria-label="Представление проекта"
+      className="relative mx-auto flex shrink-0 rounded-xl bg-ink/[0.05] p-1"
+    >
+      {pill && (
+        <span
+          aria-hidden
+          className="absolute top-1 bottom-1 rounded-lg bg-surface shadow-[0_1px_3px_rgb(18_29_51/0.12)] transition-[left,width] duration-300 ease-[var(--ease-out-soft)]"
+          style={{ left: pill.left, width: pill.width }}
+        />
+      )}
+      {TABS.map((t) => (
+        <button
+          key={t.id}
+          data-tab={t.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          onClick={() => setTab(t.id)}
+          className={cx(
+            'relative flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
+            tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink-2',
+          )}
+        >
+          <t.icon size={15} className="hidden 2xl:block" />
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function MainView() {
+  const tab = useDraft((s) => s.tab);
+  // key: при смене вкладки область пересоздаётся — короткое появление показывает, что вид сменился.
+  return (
+    <main key={tab} className="animate-view-in min-w-0 flex-1 overflow-auto bg-surface">
+      <CurrentView tab={tab} />
+    </main>
+  );
+}
+
+function CurrentView({ tab }: { tab: ViewTab }) {
   switch (tab) {
     case 'timeline':
       return <GanttView />;
     case 'graph':
       return (
-        <Suspense fallback={<p className="p-6 text-sm text-ink-3">Загружаем граф…</p>}>
+        <Suspense fallback={<Skeleton className="m-6 h-[420px]" />}>
           <GraphView />
         </Suspense>
       );
@@ -182,22 +298,29 @@ function CurrentView() {
 }
 
 function SideColumn() {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const hasDraft = useDraft((s) => s.ops.length > 0);
   const side = useDraft((s) => s.side);
+  const selectedTaskId = useDraft((s) => s.selectedTaskId);
   // Когда появляется черновик или открывается советник — показываем панель с начала.
   useEffect(() => {
     if (hasDraft || side === 'advisor') ref.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [hasDraft, side]);
   return (
-    <aside ref={ref} className="w-[360px] shrink-0 xl:w-[420px] overflow-y-auto border-l border-line bg-surface">
-      <SidePanel />
+    <aside className="w-[360px] shrink-0 border-l border-line bg-surface xl:w-[420px]">
+      <div ref={ref} className="flex h-full flex-col overflow-y-auto">
+        <div key={`${side}:${selectedTaskId ?? ''}`} className="animate-view-in flex-1">
+          <SidePanel />
+        </div>
+        {hasDraft && <DraftBar />}
+      </div>
     </aside>
   );
 }
 
 function SidePanel() {
-  const { side, selectedTaskId } = useDraft();
+  const side = useDraft((s) => s.side);
+  const selectedTaskId = useDraft((s) => s.selectedTaskId);
   const { impact, state } = useModel();
   if (side === 'advisor') return <AdvisorPanel />;
   if (side === 'project') {
@@ -213,6 +336,44 @@ function SidePanel() {
     <div className="divide-y divide-line">
       {impact && <ImpactPanel />}
       {selected ? <TaskEditor key={selected.id} task={selected} /> : !impact && <AttentionPanel />}
+    </div>
+  );
+}
+
+/** Закреплённая панель черновика: применить или отменить можно из любого места боковой колонки. */
+function DraftBar() {
+  const { base, ops } = useModel();
+  const clearDraft = useDraft((s) => s.clearDraft);
+  const apply = useApplyChanges(base.project.id);
+  const [reason, setReason] = useState('');
+  const n = ops.length;
+
+  return (
+    <div className="glass animate-toast-in sticky bottom-0 z-10 border-t border-line/80 px-5 pt-3 pb-4">
+      <p className="flex items-center gap-2 text-[12px] text-ink-2">
+        <span className="h-2 w-2 rounded-full bg-wave" />
+        Черновик: {n} {plural(n, 'изменение', 'изменения', 'изменений')}, план ещё не изменён
+      </p>
+      <input
+        className={inputClass + ' mt-2.5 bg-surface/80'}
+        placeholder="Причина, например «подрядчик сдвинул старт»"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        aria-label="Причина изменения"
+      />
+      <div className="mt-2.5 flex gap-2">
+        <Button variant="secondary" onClick={clearDraft} className="flex-1">
+          <Undo2 size={15} /> Отменить
+        </Button>
+        <Button
+          variant="primary"
+          className="flex-[2]"
+          disabled={apply.isPending}
+          onClick={() => apply.mutate({ ops, reason: reason || undefined }, { onSuccess: () => setReason('') })}
+        >
+          <Check size={15} /> Применить изменения
+        </Button>
+      </div>
     </div>
   );
 }

@@ -62,3 +62,31 @@ export const useToasts = create<ToastStore>((set) => ({
 }));
 
 export const toast = (text: string, tone?: Toast['tone']) => useToasts.getState().push(text, tone);
+
+export interface ConfirmOptions {
+  title: string;
+  text?: string;
+  confirmLabel: string;
+  danger?: boolean;
+}
+
+interface ConfirmStore {
+  request: (ConfirmOptions & { resolve: (ok: boolean) => void }) | null;
+}
+
+export const useConfirmStore = create<ConfirmStore>(() => ({ request: null }));
+
+/** Подтверждение необратимого действия в собственном диалоге вместо системного confirm(). */
+export function confirmAction(options: ConfirmOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    useConfirmStore.setState({
+      request: {
+        ...options,
+        resolve: (ok) => {
+          useConfirmStore.setState({ request: null });
+          resolve(ok);
+        },
+      },
+    });
+  });
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "volna-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@volna/server"],
+      "port": 3001
+    },
+    {
+      "name": "volna-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@volna/web"],
+      "port": 5173
+    }
+  ]
+}

@@ -14,7 +14,7 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Flame, Trash2 } from 'lucide-react';
+import { Cable, Flame, Trash2 } from 'lucide-react';
 import type { Person, Task, TaskImpact, TaskSchedule } from '@volna/engine';
 import { fmtDate, fmtDays, newId, STATUS_COLOR, STATUS_LABEL } from '../../lib/format';
 import { useModel, usePropose } from '../../lib/model';
@@ -40,14 +40,14 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskNodeType>) {
   return (
     <div
       className={cx(
-        'rounded-xl border-2 bg-surface px-3 py-1.5 shadow-sm',
+        'rounded-2xl border-2 bg-surface px-3 py-1.5 shadow-[0_1px_2px_rgb(18_29_51/0.05),0_6px_16px_-8px_rgb(18_29_51/0.2)] transition-[border-color,box-shadow]',
         shifted && 'wave-in',
         selected ? 'border-ink' : shifted ? 'border-wave' : crit ? 'border-crimson' : 'border-line',
       )}
       style={{
         width: NODE_W,
         height: NODE_H,
-        background: shifted ? 'var(--color-wave-soft)' : task.status === 'done' ? '#f7f9fb' : undefined,
+        background: shifted ? 'var(--color-wave-soft)' : task.status === 'done' ? '#f6f8fb' : undefined,
         animationDelay: impact ? `${(impact.chain.length - 1) * 110}ms` : undefined,
       }}
     >
@@ -67,7 +67,7 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskNodeType>) {
         <Avatar person={person} size={18} />
         <span className="min-w-0 flex-1 truncate text-[12px] text-ink-3">{person?.name ?? 'не назначен'}</span>
         {shifted && impact.deltaEnd !== 0 ? (
-          <span className="rounded-full bg-wave px-1.5 text-[11px] font-bold text-white">{fmtDays(impact.deltaEnd, true)}</span>
+          <span className="rounded-full bg-wave px-2 text-[11px] font-bold text-white">{fmtDays(impact.deltaEnd, true)}</span>
         ) : task.status !== 'done' ? (
           <span className={cx('text-[11px] font-medium', crit ? 'text-crimson' : 'text-ink-3')}>
             {crit ? 'без резерва' : `резерв ${fmtDays(sched.float)}`}
@@ -125,7 +125,7 @@ export function GraphView() {
   const edges: Edge[] = state.dependencies.map((d) => {
     const drv = a.tasks[d.successorId]?.driver;
     const wave = affected.has(d.successorId) && drv?.kind === 'dependency' && drv.dependencyId === d.id;
-    const color = edgeId === d.id ? '#172033' : wave ? '#f97316' : critDeps.has(d.id) ? '#dc2f45' : '#b3bccb';
+    const color = edgeId === d.id ? '#121d33' : wave ? '#fa6a1f' : critDeps.has(d.id) ? '#df3350' : '#b3bccb';
     return {
       id: d.id,
       source: d.predecessorId,
@@ -133,7 +133,10 @@ export function GraphView() {
       type: 'smoothstep',
       animated: wave,
       label: d.lagDays > 0 ? `пауза ${fmtDays(d.lagDays)}` : d.lagDays < 0 ? `нахлёст ${fmtDays(-d.lagDays)}` : undefined,
-      labelStyle: { fontSize: 11, fill: '#4a5468' },
+      labelStyle: { fontSize: 11, fill: '#465169' },
+      labelBgStyle: { fill: '#ffffff' },
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 6,
       style: { stroke: color, strokeWidth: wave || critDeps.has(d.id) || edgeId === d.id ? 2.2 : 1.4 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     };
@@ -174,22 +177,23 @@ export function GraphView() {
         nodesConnectable
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={24} color="#dce1ea" />
+        <Background gap={24} size={1.4} color="#cfd6e2" />
         <Controls showInteractive={false} />
-        <Panel position="top-left">
-          <p className="rounded-lg bg-surface/90 px-3 py-1.5 text-[12px] text-ink-2 shadow-sm">
+        <Panel position="bottom-right">
+          <p className="glass flex max-w-xs items-start gap-2 rounded-xl border border-line/70 px-3 py-2 text-[12px] leading-snug text-ink-2 shadow-float">
+            <Cable size={14} className="mt-px shrink-0 text-ink-3" />
             Протяните линию от нижней точки задачи к верхней точке другой, чтобы добавить связь. Нажмите на связь, чтобы её убрать.
           </p>
         </Panel>
         {selectedEdge && (
           <Panel position="bottom-center">
-            <div className="flex items-center gap-3 rounded-xl bg-ink px-4 py-2.5 text-sm text-white shadow-lg">
+            <div className="glass-ink animate-toast-in flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4 text-sm text-white shadow-float">
               <span>
                 «{nameOf(selectedEdge.predecessorId)}» → «{nameOf(selectedEdge.successorId)}»
               </span>
               <Button
                 size="sm"
-                variant="wave"
+                variant="danger-solid"
                 onClick={() => {
                   propose({ type: 'removeDependency', dependencyId: selectedEdge.id });
                   setEdgeId(null);

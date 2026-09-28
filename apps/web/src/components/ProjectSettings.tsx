@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { Settings2, X } from 'lucide-react';
 import type { ProjectPatch } from '@volna/engine';
 import { useModel, usePropose } from '../lib/model';
 import { useDraft } from '../store/draft';
-import { Field, inputClass } from './ui';
+import { Field, IconButton, inputClass } from './ui';
 
 /** Параметры проекта. Сроки меняются через черновик — последствия видны до применения. */
 export function ProjectSettings() {
@@ -15,13 +15,16 @@ export function ProjectSettings() {
 
   return (
     <section className="p-5">
-      <div className="flex items-center gap-2">
-        <h2 className="flex-1 text-[15px] font-semibold">Параметры проекта</h2>
-        <button type="button" aria-label="Закрыть" className="rounded-lg p-1.5 text-ink-3 hover:bg-line-soft hover:text-ink" onClick={() => setSide('auto')}>
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-ink/5 text-ink-2">
+          <Settings2 size={17} />
+        </span>
+        <h2 className="flex-1 font-display text-[16px] font-semibold">Параметры проекта</h2>
+        <IconButton label="Закрыть параметры" onClick={() => setSide('auto')}>
           <X size={16} />
-        </button>
+        </IconButton>
       </div>
-      <div className="mt-4 space-y-3">
+      <div className="mt-5 space-y-4">
         <Field label="Название">
           <input
             className={inputClass}
@@ -33,10 +36,20 @@ export function ProjectSettings() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Старт">
-            <input type="date" className={inputClass} value={state.project.startDate} onChange={(e) => e.target.value && patch({ startDate: e.target.value })} />
+            <input
+              type="date"
+              className={inputClass}
+              value={state.project.startDate}
+              onChange={(e) => e.target.value && patch({ startDate: e.target.value })}
+            />
           </Field>
-          <Field label="Дедлайн" hint="Изменение дедлайна сразу покажет, хватает ли запаса">
-            <input type="date" className={inputClass} value={state.project.deadline} onChange={(e) => e.target.value && patch({ deadline: e.target.value })} />
+          <Field label="Дедлайн">
+            <input
+              type="date"
+              className={inputClass}
+              value={state.project.deadline}
+              onChange={(e) => e.target.value && patch({ deadline: e.target.value })}
+            />
           </Field>
         </div>
         <Field label="Описание">
@@ -47,8 +60,9 @@ export function ProjectSettings() {
           />
         </Field>
       </div>
-      <p className="mt-4 rounded-lg bg-paper px-3 py-2.5 text-[12px] leading-relaxed text-ink-2">
-        Изменения попадают в черновик, как и правки задач. Сохраните их кнопкой «Применить изменения».
+      <p className="mt-5 rounded-2xl bg-paper px-3.5 py-3 text-[12px] leading-relaxed text-ink-2">
+        Изменения попадают в черновик, как и правки задач: сдвиг дедлайна сразу покажет, хватает ли запаса.
+        Сохраните их кнопкой «Применить изменения».
       </p>
     </section>
   );

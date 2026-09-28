@@ -10,16 +10,16 @@ import {
 import { fmtDate, fmtDays, fmtWeekday, newId, STATUS_COLOR, STATUS_SHORT } from '../../lib/format';
 import { useModel, usePropose } from '../../lib/model';
 import { useDraft } from '../../store/draft';
-import { Button, Chip, cx, Field, inputClass } from '../ui';
+import { Button, Chip, cx, Field, IconButton, inputClass, SectionTitle, StatusDot } from '../ui';
 
 function DateInput({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
   return (
     <div className="flex gap-1">
       <input type="date" className={inputClass} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)} />
       {value && (
-        <button type="button" aria-label="Очистить" className="rounded-lg px-2 text-ink-3 hover:bg-line-soft hover:text-ink" onClick={() => onChange(null)}>
+        <IconButton label="Очистить дату" className="h-9 w-9" onClick={() => onChange(null)}>
           <X size={14} />
-        </button>
+        </IconButton>
       )}
     </div>
   );
@@ -27,8 +27,8 @@ function DateInput({ value, onChange }: { value: string | null; onChange: (v: st
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mt-5">
-      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">{title}</h3>
+    <div className="mt-6">
+      <SectionTitle>{title}</SectionTitle>
       {children}
     </div>
   );
@@ -74,22 +74,23 @@ export function TaskEditor({ task }: { task: Task }) {
 
   return (
     <section className="p-5">
-      <div className="flex items-start gap-2">
+      <div className="flex items-center gap-2">
+        <StatusDot status={task.status} size={10} />
         <input
-          className="min-w-0 flex-1 rounded-lg border border-transparent px-1 py-0.5 text-[17px] font-semibold outline-none hover:border-line focus:border-cobalt"
+          className="min-w-0 flex-1 rounded-lg border border-transparent px-1.5 py-0.5 font-display text-[17px] font-semibold outline-none transition-colors hover:border-line focus:border-cobalt"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => (name.trim() ? name.trim() !== task.name && patch({ name: name.trim() }) : setName(task.name))}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           aria-label="Название задачи"
         />
-        <button type="button" aria-label="Закрыть" className="rounded-lg p-1.5 text-ink-3 hover:bg-line-soft hover:text-ink" onClick={() => select(null)}>
+        <IconButton label="Закрыть задачу" onClick={() => select(null)}>
           <X size={16} />
-        </button>
+        </IconButton>
       </div>
 
       {s && (
-        <div className="mt-2 flex flex-wrap gap-1.5 px-1">
+        <div className="mt-2 flex flex-wrap gap-1.5 pl-[18px]">
           {s.flags.critical && <Chip tone="crimson">Критический путь</Chip>}
           {s.flags.missesDueDate && <Chip tone="crimson">Не успевает к сроку</Chip>}
           {s.flags.overdue && <Chip tone="crimson">Просрочена</Chip>}
@@ -100,15 +101,17 @@ export function TaskEditor({ task }: { task: Task }) {
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-paper p-1">
+      <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-ink/[0.05] p-1" role="radiogroup" aria-label="Статус задачи">
         {TASK_STATUSES.map((st) => (
           <button
             key={st}
             type="button"
+            role="radio"
+            aria-checked={task.status === st}
             onClick={() => patch(statusPatch(task, st, analysis))}
             className={cx(
-              'flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
-              task.status === st ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink',
+              'flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-[background-color,color,box-shadow] duration-200',
+              task.status === st ? 'bg-surface text-ink shadow-[0_1px_3px_rgb(18_29_51/0.12)]' : 'text-ink-3 hover:text-ink',
             )}
           >
             <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[st] }} />
@@ -118,7 +121,7 @@ export function TaskEditor({ task }: { task: Task }) {
       </div>
 
       {s && (
-        <div className="mt-4 grid grid-cols-3 gap-3 rounded-xl border border-line p-3 text-[13px]">
+        <div className="mt-4 grid grid-cols-3 gap-3 rounded-2xl border border-line p-3.5 text-[13px]">
           <div>
             <p className="text-ink-3">Начало</p>
             <p className="font-medium">
@@ -137,14 +140,19 @@ export function TaskEditor({ task }: { task: Task }) {
               {task.status === 'done' ? '—' : s.flags.critical ? 'нет' : fmtDays(s.float)}
             </p>
           </div>
-          <p className="col-span-3 text-[12px] text-ink-2">Старт: {driverText}</p>
+          <p className="col-span-3 border-t border-line-soft pt-2.5 text-[12px] text-ink-2">Старт: {driverText}</p>
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-5 grid grid-cols-2 gap-x-3 gap-y-4">
         <Field label="Длительность, раб. дней">
           <div className="flex">
-            <button type="button" aria-label="Меньше" className="h-9 rounded-l-lg border border-line px-2.5 hover:bg-paper" onClick={() => patch({ durationDays: Math.max(0, task.durationDays - 1) })}>
+            <button
+              type="button"
+              aria-label="Меньше"
+              className="h-9 rounded-l-xl border border-line px-2.5 transition-colors hover:bg-paper"
+              onClick={() => patch({ durationDays: Math.max(0, task.durationDays - 1) })}
+            >
               <Minus size={14} />
             </button>
             <input
@@ -154,7 +162,12 @@ export function TaskEditor({ task }: { task: Task }) {
               value={task.durationDays}
               onChange={(e) => patch({ durationDays: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
             />
-            <button type="button" aria-label="Больше" className="h-9 rounded-r-lg border border-line px-2.5 hover:bg-paper" onClick={() => patch({ durationDays: task.durationDays + 1 })}>
+            <button
+              type="button"
+              aria-label="Больше"
+              className="h-9 rounded-r-xl border border-line px-2.5 transition-colors hover:bg-paper"
+              onClick={() => patch({ durationDays: task.durationDays + 1 })}
+            >
               <Plus size={14} />
             </button>
           </div>
@@ -198,7 +211,7 @@ export function TaskEditor({ task }: { task: Task }) {
 
       {task.status !== 'done' && (
         <Section title="Что если…">
-          <div className="divide-y divide-wave/15 rounded-xl bg-wave-soft/70 px-3 text-[13px]">
+          <div className="divide-y divide-wave/15 rounded-2xl border border-wave/20 bg-wave-soft/60 px-3.5 text-[13px]">
             <Scenario label="Задача оказалась сложнее">
               {[2, 5, 10].map((n) => (
                 <Button key={n} size="sm" onClick={() => patch({ durationDays: task.durationDays + n })}>
@@ -208,14 +221,19 @@ export function TaskEditor({ task }: { task: Task }) {
             </Scenario>
             <Scenario label="Смежник или подрядчик задерживает старт">
               <span className="text-ink-2">до</span>
-              <input type="date" className={inputClass + ' h-7 w-[140px] text-[13px]'} value={delayDate} onChange={(e) => setDelayDate(e.target.value)} />
+              <input
+                type="date"
+                className={inputClass + ' h-7 w-[140px] rounded-lg text-[13px]'}
+                value={delayDate}
+                onChange={(e) => setDelayDate(e.target.value)}
+              />
               <Button size="sm" onClick={() => patch({ startNotEarlier: delayDate })}>
                 Задать
               </Button>
             </Scenario>
             <Scenario label="Ответственный недоступен">
               <select
-                className={inputClass + ' h-7 w-[220px] text-[13px]'}
+                className={inputClass + ' h-7 w-[220px] rounded-lg text-[13px]'}
                 value=""
                 onChange={(e) => e.target.value && patch({ assigneeId: e.target.value })}
               >
@@ -258,7 +276,7 @@ export function TaskEditor({ task }: { task: Task }) {
         />
       </Section>
 
-      <div className="mt-5">
+      <div className="mt-6">
         <Field label="Описание">
           <textarea
             className={inputClass + ' h-20 resize-none py-2'}
@@ -271,7 +289,7 @@ export function TaskEditor({ task }: { task: Task }) {
       <Button
         variant="danger"
         size="sm"
-        className="mt-4"
+        className="mt-5"
         onClick={() => {
           if (propose({ type: 'deleteTask', taskId: task.id })) select(null);
         }}
@@ -284,8 +302,8 @@ export function TaskEditor({ task }: { task: Task }) {
 
 function Scenario({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="py-2.5">
-      <p className="mb-1.5 font-medium">{label}</p>
+    <div className="py-3">
+      <p className="mb-2 font-medium">{label}</p>
       <div className="flex flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
@@ -310,7 +328,8 @@ function DepList({
     <div className="space-y-1.5">
       {items.length === 0 && <p className="text-[13px] text-ink-3">Нет связей</p>}
       {items.map(({ dep, other }) => (
-        <div key={dep.id} className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[13px]">
+        <div key={dep.id} className="flex items-center gap-2 rounded-xl border border-line py-1 pr-1 pl-3 text-[13px]">
+          <StatusDot status={other.status} size={7} />
           <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => select(other.id)}>
             {other.name}
           </button>
@@ -323,7 +342,7 @@ function DepList({
               <input
                 type="number"
                 min={-other.durationDays}
-                className="h-6 w-11 rounded border border-line text-center text-[12px] text-ink outline-none focus:border-cobalt"
+                className="h-6 w-11 rounded-md border border-line text-center text-[12px] text-ink outline-none focus:border-cobalt"
                 value={dep.lagDays}
                 onChange={(e) =>
                   propose({ type: 'updateDependency', dependencyId: dep.id, lagDays: Math.round(Number(e.target.value) || 0) })
@@ -331,18 +350,21 @@ function DepList({
               />
             </label>
           )}
-          <button
-            type="button"
-            aria-label="Убрать связь"
-            className="rounded p-0.5 text-ink-3 hover:bg-crimson-soft hover:text-crimson"
+          <IconButton
+            label="Убрать связь"
+            className="h-7 w-7 hover:bg-crimson-soft hover:text-crimson"
             onClick={() => propose({ type: 'removeDependency', dependencyId: dep.id })}
           >
             <X size={14} />
-          </button>
+          </IconButton>
         </div>
       ))}
       {candidates.length > 0 && (
-        <select className={inputClass + ' h-8 text-[13px] text-ink-2'} value="" onChange={(e) => e.target.value && onAdd(e.target.value)}>
+        <select
+          className={inputClass + ' h-8 rounded-xl text-[13px] text-ink-2'}
+          value=""
+          onChange={(e) => e.target.value && onAdd(e.target.value)}
+        >
           <option value="">{addLabel}…</option>
           {candidates.map((t) => (
             <option key={t.id} value={t.id}>

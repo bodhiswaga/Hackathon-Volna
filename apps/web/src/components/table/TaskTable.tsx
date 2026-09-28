@@ -2,11 +2,11 @@ import { statusPatch, TASK_STATUSES, type TaskPatch } from '@volna/engine';
 import { fmtDate, fmtDays, STATUS_LABEL } from '../../lib/format';
 import { useModel, usePropose } from '../../lib/model';
 import { useDraft } from '../../store/draft';
-import { Chip, cx, Empty } from '../ui';
+import { Chip, cx, Empty, StatusDot } from '../ui';
 
-const cell = 'px-3 py-2 align-middle';
+const cell = 'border-b border-line-soft px-3 py-2 align-middle';
 const control =
-  'h-8 rounded-md border border-transparent bg-transparent px-1.5 text-[13px] outline-none hover:border-line focus:border-cobalt';
+  'h-8 rounded-lg border border-transparent bg-transparent px-1.5 text-[13px] outline-none transition-colors hover:border-line focus:border-cobalt';
 
 export function TaskTable() {
   const { state, analysis: a, impact } = useModel();
@@ -17,18 +17,18 @@ export function TaskTable() {
   const affected = new Map((impact?.affected ?? []).map((x) => [x.taskId, x]));
 
   if (state.tasks.length === 0) {
-    return <Empty title="Задач пока нет">Нажмите «Задача», чтобы добавить первую.</Empty>;
+    return <Empty title="Задач пока нет">Нажмите «Задача» вверху справа, чтобы добавить первую.</Empty>;
   }
 
   const patch = (taskId: string, p: TaskPatch) => propose({ type: 'updateTask', taskId, patch: p });
 
   return (
-    <div className="p-4">
-      <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-xl border border-line bg-surface text-[13px]">
+    <div className="p-5">
+      <table className="w-full border-separate border-spacing-0 overflow-clip rounded-2xl border border-line bg-surface text-[13px]">
         <thead>
           <tr className="text-left text-[12px] text-ink-3">
             {['Задача', 'Ответственный', 'Статус', 'Длительность', 'Начало', 'Окончание', 'Срок', 'Резерв', 'Риски'].map((h) => (
-              <th key={h} className="border-b border-line px-3 py-2.5 font-medium">
+              <th key={h} className="glass sticky top-0 z-10 border-b border-line px-3 py-2.5 font-medium">
                 {h}
               </th>
             ))}
@@ -44,14 +44,17 @@ export function TaskTable() {
               <tr
                 key={id}
                 className={cx(
-                  'border-b border-line-soft',
+                  'transition-colors',
                   selectedId === id ? 'bg-cobalt-soft' : imp ? 'bg-wave-soft' : 'hover:bg-paper/70',
                 )}
               >
                 <td className={cell + ' max-w-[280px]'}>
-                  <button type="button" onClick={() => select(id)} className="block max-w-full text-left">
+                  <button type="button" onClick={() => select(id)} className="flex max-w-full items-start gap-2 text-left">
+                    <span className="mt-[5px]"><StatusDot status={t.status} /></span>
+                    <span className="min-w-0">
                     <span className="block truncate font-medium hover:underline">{t.name}</span>
                     {preds.length > 0 && <span className="block truncate text-[12px] text-ink-3">после: {preds.join(', ')}</span>}
+                    </span>
                   </button>
                 </td>
                 <td className={cell}>

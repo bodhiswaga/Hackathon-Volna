@@ -2,27 +2,78 @@
 
 @theme {
   --font-sans: 'Onest', system-ui, sans-serif;
-  --font-display: 'Unbounded', 'Onest', sans-serif;
+  --font-display: 'Geologica', 'Onest', system-ui, sans-serif;
 
-  --color-ink: #172033;
-  --color-ink-2: #4a5468;
-  --color-ink-3: #8a93a6;
-  --color-paper: #f2f4f7;
+  --color-ink: #121d33;
+  --color-ink-2: #465169;
+  --color-ink-3: #8790a5;
+  --color-paper: #edf0f5;
   --color-surface: #ffffff;
-  --color-line: #dce1ea;
-  --color-line-soft: #eceff4;
+  --color-line: #d9dfe9;
+  --color-line-soft: #e9edf3;
 
-  --color-cobalt: #2f54eb;
-  --color-cobalt-soft: #e7ecff;
-  --color-wave: #f97316;
-  --color-wave-soft: #fff1e6;
-  --color-crimson: #dc2f45;
-  --color-crimson-soft: #fdecee;
-  --color-moss: #2f9e6e;
-  --color-moss-soft: #e4f5ed;
-  --color-ochre: #b7791f;
-  --color-ochre-soft: #fbf1df;
-  --color-idle: #aeb6c5;
+  --color-cobalt: #3155f0;
+  --color-cobalt-soft: #e6ebff;
+  --color-wave: #fa6a1f;
+  --color-wave-deep: #e2560c;
+  --color-wave-soft: #fff0e6;
+  --color-crimson: #df3350;
+  --color-crimson-soft: #fdebee;
+  --color-moss: #269a69;
+  --color-moss-soft: #e2f4ea;
+  --color-ochre: #bd861b;
+  --color-ochre-soft: #fbf0dc;
+  --color-idle: #aab3c3;
+  --color-bar-idle: #e1e6ee;
+
+  --shadow-float: 0 1px 2px rgb(18 29 51 / 0.06), 0 12px 32px -12px rgb(18 29 51 / 0.28);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --animate-pop-in: pop-in 160ms var(--ease-out-soft) backwards;
+  --animate-view-in: view-in 220ms var(--ease-out-soft) backwards;
+  --animate-toast-in: toast-in 260ms var(--ease-out-soft) backwards;
+  --animate-fade-in: fade-in 200ms ease-out backwards;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-sea: sea 18s linear infinite;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+/* Волнение моря в статусной панели: узор периодичен, сдвиг на половину ширины замыкает цикл. */
+@keyframes sea {
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 html,
@@ -39,9 +90,54 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+::selection {
+  background: var(--color-cobalt-soft);
+}
+
 :focus-visible {
   outline: 2px solid var(--color-cobalt);
   outline-offset: 2px;
+}
+
+@layer base {
+  /* Geologica: лёгкая заострённость засечек — «картографический» характер заголовков и цифр. */
+  .font-display {
+    font-variation-settings: 'SHRP' 40;
+    letter-spacing: -0.01em;
+  }
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+}
+
+/* Полупрозрачные слои — только то, что лежит поверх контента. */
+@utility glass {
+  background: rgb(255 255 255 / 0.74);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+}
+/* Всплывающие окна: плотнее, чтобы текст читался и над тёмной статусной панелью. */
+@utility glass-strong {
+  background: rgb(255 255 255 / 0.9);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+}
+@utility glass-ink {
+  background: rgb(18 29 51 / 0.86);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+}
+
+@utility skeleton {
+  background: linear-gradient(90deg, var(--color-line-soft) 25%, #f6f8fb 50%, var(--color-line-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
 }
 
 /* Волна: сдвинутые изменением задачи подсвечиваются по очереди вдоль цепочки. */
@@ -56,29 +152,47 @@ body {
   }
 }
 .wave-in {
-  animation: wave-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: wave-in 420ms var(--ease-out-soft) both;
 }
 
 @keyframes wave-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(220 47 69 / 0.55);
+    box-shadow: 0 0 0 0 rgb(223 51 80 / 0.55);
   }
   50% {
-    box-shadow: 0 0 0 6px rgb(220 47 69 / 0);
+    box-shadow: 0 0 0 6px rgb(223 51 80 / 0);
   }
 }
 .pulse-crimson {
   animation: wave-pulse 1.8s ease-in-out infinite;
 }
 
+dialog::backdrop {
+  background: rgb(18 29 51 / 0.32);
+  backdrop-filter: blur(3px);
+  animation: fade-in 200ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .wave-in,
-  .pulse-crimson {
-    animation: none;
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
 .react-flow__attribution {
   display: none;
+}
+.react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-float);
+}
+.react-flow__controls-button {
+  border-bottom-color: var(--color-line-soft);
 }

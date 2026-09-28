@@ -1,4 +1,4 @@
-import { Toasts } from './components/ui';
+import { ConfirmHost, Toasts } from './components/ui';
 import { useHash } from './lib/router';
 import { ProjectPage } from './pages/ProjectPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -10,6 +10,7 @@ export function App() {
     <>
       {match ? <ProjectPage key={match[1]} id={decodeURIComponent(match[1])} /> : <ProjectsPage />}
       <Toasts />
+      <ConfirmHost />
     </>
   );
 }
