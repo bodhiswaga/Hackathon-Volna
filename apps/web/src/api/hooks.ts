@@ -56,12 +56,21 @@ export function useDeleteProject() {
 export function useApplyChanges(id: string) {
   const update = useStateUpdater(id);
   const clearDraft = useDraft((s) => s.clearDraft);
+  const clearScenarios = useDraft((s) => s.clearScenarios);
   return useMutation({
     mutationFn: (body: { ops: ChangeOp[]; reason?: string }) => api.applyChanges(id, body),
     onSuccess: ({ state }) => {
       update(state);
       clearDraft();
-      toast('Изменения применены и записаны в журнал', 'success');
+      // Варианты считались от прежнего плана: после решения сравнивать их не с чем.
+      const hadScenarios = useDraft.getState().scenarios.length > 0;
+      clearScenarios();
+      toast(
+        hadScenarios
+          ? 'Изменения применены и записаны в журнал, сохранённые варианты сброшены'
+          : 'Изменения применены и записаны в журнал',
+        'success',
+      );
     },
     onError,
   });
@@ -107,6 +116,7 @@ export function usePeopleMutations(id: string) {
 export function useResetDemo() {
   const qc = useQueryClient();
   const clearDraft = useDraft((s) => s.clearDraft);
+  const clearScenarios = useDraft((s) => s.clearScenarios);
   return useMutation({
     mutationFn: api.resetDemo,
     onSuccess: (state) => {
@@ -114,6 +124,8 @@ export function useResetDemo() {
       qc.invalidateQueries({ queryKey: keys.changes(state.project.id) });
       qc.invalidateQueries({ queryKey: keys.projects });
       clearDraft();
+      // У пересозданного проекта другие id задач — старые варианты к нему не применить.
+      clearScenarios();
       toast('Демо-проект пересоздан', 'success');
     },
     onError,

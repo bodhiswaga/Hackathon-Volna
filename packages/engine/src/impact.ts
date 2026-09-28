@@ -1,57 +1,5 @@
 import { daysText, plural } from './calendar';
-import type {
-  Alert,
-  Analysis,
-  ChangeOp,
-  Health,
-  ISODate,
-  ProjectState,
-  RiskLevel,
-} from './types';
-
-export interface TaskImpact {
-  taskId: string;
-  name: string;
-  /** Задача изменена самим пользователем (а не сдвинута волной). */
-  direct: boolean;
-  created: boolean;
-  startBefore: ISODate | null;
-  startAfter: ISODate;
-  endBefore: ISODate | null;
-  endAfter: ISODate;
-  /** Сдвиг в рабочих днях (после − до). */
-  deltaStart: number;
-  deltaEnd: number;
-  /** Цепочка распространения: от первопричины к этой задаче. */
-  chain: string[];
-  reason: string;
-  riskBefore: RiskLevel;
-  riskAfter: RiskLevel;
-  criticalBefore: boolean;
-  criticalAfter: boolean;
-}
-
-export interface ImpactReport {
-  directTaskIds: string[];
-  deleted: { taskId: string; name: string }[];
-  affected: TaskImpact[];
-  /** Сколько задач сдвинулось волной (не считая изменённых напрямую). */
-  wavedCount: number;
-  finishBefore: ISODate;
-  finishAfter: ISODate;
-  finishDelta: number;
-  deadlineBefore: ISODate;
-  deadlineAfter: ISODate;
-  bufferBefore: number;
-  bufferAfter: number;
-  newAlerts: Alert[];
-  resolvedAlerts: Alert[];
-  criticalAdded: string[];
-  criticalRemoved: string[];
-  verdict: Health;
-  headline: string;
-  attention: string[];
-}
+import type { Analysis, ChangeOp, Health, ImpactReport, ProjectState, TaskImpact } from './types';
 
 function directTaskIds(before: ProjectState, ops: ChangeOp[]): Set<string> {
   const ids = new Set<string>();
@@ -118,7 +66,10 @@ export function diffAnalyses(
       const drv = a.driver;
       if (drv.kind === 'dependency') {
         const pd = deltaEnd(drv.taskId);
-        reason = pd !== 0 ? `вслед за ${name(drv.taskId)} (${signed(pd)} дн.)` : `после ${name(drv.taskId)}`;
+        reason =
+          pd !== 0
+            ? `вслед за ${name(drv.taskId)} (${signed(pd)} дн.)`
+            : `после ${name(drv.taskId)}`;
       } else if (drv.kind === 'today') reason = 'не может начаться раньше сегодняшнего дня';
       else if (drv.kind === 'constraint') reason = 'ограничение «не раньше»';
       else if (drv.kind === 'projectStart') reason = 'старт проекта';
@@ -203,7 +154,8 @@ export function diffAnalyses(
 
   let verdict: Health = 'ok';
   if (bufferAfter < 0 || newAlerts.some((a) => a.severity === 'high')) verdict = 'intervention';
-  else if (finishDelta > 0 || newAlerts.length > 0 || criticalAdded.length > 0) verdict = 'attention';
+  else if (finishDelta > 0 || newAlerts.length > 0 || criticalAdded.length > 0)
+    verdict = 'attention';
 
   return {
     directTaskIds: [...direct],

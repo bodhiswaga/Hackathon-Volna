@@ -1,50 +1,20 @@
 import { analyze } from './analyze';
 import { daysText, formatShort, indexToDate } from './calendar';
 import { applyChangeSet } from './changeset';
-import type { Analysis, ChangeOp, ISODate, ProjectState } from './types';
+import type {
+  Advice,
+  Analysis,
+  ChangeOp,
+  ISODate,
+  ProjectState,
+  RecoveryPlan,
+  Suggestion,
+} from './types';
 
 /** Максимальная доля длительности, которую советник предлагает «ужать». */
 export const MAX_CRASH_SHARE = 0.3;
 /** Максимальный нахлёст задач при распараллеливании — доля длительности предшественника. */
 export const MAX_OVERLAP_SHARE = 0.5;
-
-export type SuggestionKind =
-  | 'crash'
-  | 'parallelize'
-  | 'removeLag'
-  | 'removeConstraint'
-  | 'reassign'
-  | 'moveDeadline';
-
-export interface Suggestion {
-  id: string;
-  kind: SuggestionKind;
-  title: string;
-  description: string;
-  ops: ChangeOp[];
-  /** На сколько рабочих дней раньше закончится проект. */
-  gainDays: number;
-  finishAfter: ISODate;
-  bufferAfter: number;
-  fitsDeadline: boolean;
-  /** Условная «цена» решения: 1 — дёшево, 3 — дорого или рискованно. */
-  cost: 1 | 2 | 3;
-  /** Какие проблемы снимает (тексты алертов). */
-  resolves: string[];
-}
-
-export interface RecoveryPlan {
-  steps: Suggestion[];
-  ops: ChangeOp[];
-  finishAfter: ISODate;
-  bufferAfter: number;
-  fitsDeadline: boolean;
-}
-
-export interface Advice {
-  suggestions: Suggestion[];
-  plan: RecoveryPlan | null;
-}
 
 interface Ctx {
   state: ProjectState;
@@ -218,7 +188,9 @@ function buildPlan(ctx: Ctx): RecoveryPlan | null {
     const cands = accelerationCandidates(cur, used);
     if (cands.length === 0) break;
     const deficit = -cur.analysis.bufferDays;
-    const closing = cands.filter((c) => c.gainDays >= deficit).sort((a, b) => a.cost - b.cost || b.gainDays - a.gainDays);
+    const closing = cands
+      .filter((c) => c.gainDays >= deficit)
+      .sort((a, b) => a.cost - b.cost || b.gainDays - a.gainDays);
     const pick = closing[0] ?? cands.sort((a, b) => b.gainDays - a.gainDays || a.cost - b.cost)[0];
     used.add(pick.id);
     steps.push(pick);
@@ -244,7 +216,7 @@ export function advise(state: ProjectState, today: ISODate): Advice {
   const suggestions = [...accelerationCandidates(ctx, new Set()), ...reassignCandidates(ctx)].sort(
     (a, b) =>
       // Когда сроки в порядке, важнее снять текущие проблемы (перегрузки), чем ускоряться.
-      analysis.bufferDays >= 0 && (a.resolves.length > 0) !== (b.resolves.length > 0)
+      analysis.bufferDays >= 0 && a.resolves.length > 0 !== b.resolves.length > 0
         ? a.resolves.length > 0
           ? -1
           : 1

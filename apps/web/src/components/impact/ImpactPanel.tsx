@@ -1,27 +1,42 @@
 import { useState } from 'react';
-import { ArrowRight, Check, ChevronDown, Lightbulb } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Lightbulb, Megaphone } from 'lucide-react';
 import { describeOps, type Health } from '@volna/engine';
-import { fmtDate, fmtDays, fmtShiftedTasks } from '../../lib/format';
+import {
+  chanceText,
+  fmtBuffer,
+  fmtChance,
+  fmtDate,
+  fmtDays,
+  fmtShiftedTasks,
+} from '../../lib/format';
 import { useModel } from '../../lib/model';
 import { useDraft } from '../../store/draft';
+import { BriefDialog } from '../brief/BriefDialog';
 import { Button, Chip, cx, SectionTitle } from '../ui';
 
 const VERDICT: Record<Health, { title: string; color: string; bg: string }> = {
   ok: { title: 'Можно применять', color: 'var(--color-moss)', bg: 'var(--color-moss-soft)' },
-  attention: { title: 'Есть последствия', color: 'var(--color-wave-deep)', bg: 'var(--color-wave-soft)' },
-  intervention: { title: 'Требуется вмешательство', color: 'var(--color-crimson)', bg: 'var(--color-crimson-soft)' },
+  attention: {
+    title: 'Есть последствия',
+    color: 'var(--color-wave-deep)',
+    bg: 'var(--color-wave-soft)',
+  },
+  intervention: {
+    title: 'Требуется вмешательство',
+    color: 'var(--color-crimson)',
+    bg: 'var(--color-crimson-soft)',
+  },
 };
 
 /** Сколько задач волны показывать сразу; остальные — по кнопке, чтобы панель не разрасталась. */
 const WAVE_PREVIEW = 4;
 
-const bufferText = (n: number) => (n < 0 ? `опоздание ${fmtDays(-n)}` : `запас ${fmtDays(n)}`);
-
 export function ImpactPanel() {
-  const { impact, base, ops } = useModel();
+  const { impact, base, ops, forecast, baseForecast } = useModel();
   const setSide = useDraft((s) => s.setSide);
   const select = useDraft((s) => s.select);
   const [showAll, setShowAll] = useState(false);
+  const [briefOpen, setBriefOpen] = useState(false);
   if (!impact) return null;
 
   const v = VERDICT[impact.verdict];
@@ -32,10 +47,24 @@ export function ImpactPanel() {
 
   return (
     <section className="p-5">
-      <h2 className="font-display text-[16px] font-semibold">Что будет, если применить</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-[16px] font-semibold">Что будет, если применить</h2>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setBriefOpen(true)}
+          title="Письмо заказчику и сообщения команде"
+        >
+          <Megaphone size={14} /> Сообщить
+        </Button>
+      </div>
+      {briefOpen && <BriefDialog onClose={() => setBriefOpen(false)} />}
 
       <div className="mt-3 rounded-2xl p-4" style={{ background: v.bg }}>
-        <p className="flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: v.color }}>
+        <p
+          className="flex items-center gap-1.5 text-[13px] font-semibold"
+          style={{ color: v.color }}
+        >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: v.color }} />
           {v.title}
         </p>
@@ -56,8 +85,16 @@ export function ImpactPanel() {
           <div>
             <p className="text-ink-3">До дедлайна</p>
             <p className={cx('font-medium', impact.bufferAfter < 0 && 'text-crimson')}>
-              {bufferText(impact.bufferBefore)} <ArrowRight size={12} className="inline text-ink-3" />{' '}
-              {bufferText(impact.bufferAfter)}
+              {fmtBuffer(impact.bufferBefore)}{' '}
+              <ArrowRight size={12} className="inline text-ink-3" /> {fmtBuffer(impact.bufferAfter)}
+            </p>
+          </div>
+          <div className="col-span-2 flex items-baseline justify-between gap-2">
+            <p className="text-ink-3">Шанс успеть к дедлайну</p>
+            <p className="font-medium">
+              {fmtChance(baseForecast.chance)}{' '}
+              <ArrowRight size={12} className="inline text-ink-3" />{' '}
+              <span className={chanceText(forecast.chance)}>{fmtChance(forecast.chance)}</span>
             </p>
           </div>
         </div>
@@ -83,19 +120,27 @@ export function ImpactPanel() {
 
       <div className="mt-5">
         <SectionTitle>
-          {waved.length > 0 ? `Волна: ${fmtShiftedTasks(waved.length)}` : 'Зависимые задачи не сдвигаются'}
+          {waved.length > 0
+            ? `Волна: ${fmtShiftedTasks(waved.length)}`
+            : 'Зависимые задачи не сдвигаются'}
         </SectionTitle>
         {waved.length > 0 && (
           <ol className="relative space-y-2 border-l-2 border-wave/25 pl-3">
             {visible.map((x) => (
-              <li key={x.taskId} className="wave-in" style={{ animationDelay: `${(x.chain.length - 1) * 110}ms` }}>
+              <li
+                key={x.taskId}
+                className="wave-in"
+                style={{ animationDelay: `${(x.chain.length - 1) * 110}ms` }}
+              >
                 <button
                   type="button"
                   onClick={() => select(x.taskId)}
                   className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-ink-3 hover:bg-paper/50"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{x.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                      {x.name}
+                    </span>
                     {x.criticalAfter && <Chip tone="crimson">крит. путь</Chip>}
                     <Chip tone={x.deltaEnd > 0 ? 'wave' : 'moss'}>{fmtDays(x.deltaEnd, true)}</Chip>
                   </div>
@@ -121,7 +166,10 @@ export function ImpactPanel() {
             onClick={() => setShowAll((s) => !s)}
             className="mt-2 flex items-center gap-1 rounded-lg px-1 text-[13px] font-medium text-ink-2 hover:text-ink"
           >
-            <ChevronDown size={14} className={cx('transition-transform', showAll && 'rotate-180')} />
+            <ChevronDown
+              size={14}
+              className={cx('transition-transform', showAll && 'rotate-180')}
+            />
             {showAll ? 'Свернуть' : `Ещё ${waved.length - WAVE_PREVIEW}`}
           </button>
         )}

@@ -8,3 +8,4 @@ apps/server/data/
 .DS_Store
 *.log
 .env
+.playwright-mcp/

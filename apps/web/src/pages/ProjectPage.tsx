@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  BookmarkPlus,
   ChartGantt,
   Check,
   ChevronDown,
+  Columns3,
   FolderOpen,
   History,
   Plus,
+  Radar,
   RotateCcw,
   Settings2,
   Table2,
@@ -14,23 +17,42 @@ import {
   Workflow,
   type LucideIcon,
 } from 'lucide-react';
-import { plural } from '@volna/engine';
+import { plural, summarizeOps } from '@volna/engine';
 import { useApplyChanges, useProject, useResetDemo } from '../api/hooks';
 import { AdvisorPanel } from '../components/advisor/AdvisorPanel';
 import { AttentionPanel } from '../components/AttentionPanel';
+import { EventHost, EventsMenu } from '../components/events/EventDialog';
 import { GanttView } from '../components/gantt/GanttView';
 import { ImpactPanel } from '../components/impact/ImpactPanel';
 import { JournalView } from '../components/JournalView';
 import { ProjectSettings } from '../components/ProjectSettings';
+import { RisksView } from '../components/risks/RisksView';
+import { CompareHost } from '../components/scenarios/ScenarioCompare';
 import { StatusStrip } from '../components/StatusStrip';
 import { TaskTable } from '../components/table/TaskTable';
 import { TaskEditor } from '../components/task/TaskEditor';
 import { TeamView } from '../components/TeamView';
-import { Button, cx, Empty, inputClass, MenuItem, Popover, Skeleton, WaveMark } from '../components/ui';
+import {
+  Button,
+  cx,
+  Empty,
+  inputClass,
+  MenuItem,
+  Popover,
+  Skeleton,
+  WaveMark,
+} from '../components/ui';
 import { fmtDate, newId } from '../lib/format';
 import { ModelContext, useModel, usePropose, useProjectModel } from '../lib/model';
 import { navigate } from '../lib/router';
-import { confirmAction, useDraft, type ViewTab } from '../store/draft';
+import {
+  confirmAction,
+  sameOps,
+  SCENARIO_LETTERS,
+  toast,
+  useDraft,
+  type ViewTab,
+} from '../store/draft';
 
 // Граф (React Flow + dagre) — самая тяжёлая часть бандла, грузим его только при открытии вкладки.
 const GraphView = lazy(() =>
@@ -39,6 +61,7 @@ const GraphView = lazy(() =>
 
 const TABS: { id: ViewTab; label: string; icon: LucideIcon }[] = [
   { id: 'timeline', label: 'Таймлайн', icon: ChartGantt },
+  { id: 'risks', label: 'Риски', icon: Radar },
   { id: 'graph', label: 'Граф связей', icon: Workflow },
   { id: 'table', label: 'Задачи', icon: Table2 },
   { id: 'team', label: 'Команда', icon: Users },
@@ -77,6 +100,8 @@ export function ProjectPage({ id }: { id: string }) {
           <SideColumn />
         </div>
       </div>
+      <EventHost />
+      <CompareHost />
     </ModelContext.Provider>
   );
 }
@@ -146,18 +171,23 @@ function TopBar() {
 
       <Popover
         label="Меню проекта"
-        buttonClassName="flex max-w-[260px] min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-colors hover:bg-ink/5 aria-expanded:bg-ink/5 xl:max-w-[360px] 2xl:max-w-[440px]"
+        buttonClassName="flex max-w-[200px] min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-colors hover:bg-ink/5 aria-expanded:bg-ink/5 xl:max-w-[280px] 2xl:max-w-[440px]"
         button={(open) => (
           <>
             <span className="min-w-0">
-              <span className="block truncate text-[14px] leading-5 font-semibold">{state.project.name}</span>
+              <span className="block truncate text-[14px] leading-5 font-semibold">
+                {state.project.name}
+              </span>
               <span className="block truncate text-[12px] leading-4 text-ink-3">
                 {fmtDate(state.project.startDate)} — {fmtDate(state.project.deadline)}
               </span>
             </span>
             <ChevronDown
               size={15}
-              className={cx('shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')}
+              className={cx(
+                'shrink-0 text-ink-3 transition-transform duration-200',
+                open && 'rotate-180',
+              )}
             />
           </>
         )}
@@ -166,7 +196,9 @@ function TopBar() {
         {(close) => (
           <>
             {state.project.description && (
-              <p className="px-3 pt-2 pb-2.5 text-[13px] leading-snug text-ink-2">{state.project.description}</p>
+              <p className="px-3 pt-2 pb-2.5 text-[13px] leading-snug text-ink-2">
+                {state.project.description}
+              </p>
             )}
             <MenuItem
               icon={<Settings2 size={16} />}
@@ -206,8 +238,16 @@ function TopBar() {
 
       <Tabs />
 
-      <Button variant="primary" size="sm" className="h-8 shrink-0 px-3" onClick={addTask}>
-        <Plus size={15} /> Задача
+      <VariantsButton />
+      <EventsMenu />
+      <Button
+        variant="primary"
+        size="sm"
+        className="h-8 shrink-0 px-2.5 xl:px-3"
+        onClick={addTask}
+        aria-label="Новая задача"
+      >
+        <Plus size={15} /> <span className="hidden xl:inline">Задача</span>
       </Button>
     </header>
   );
@@ -243,7 +283,7 @@ function Tabs() {
       {pill && (
         <span
           aria-hidden
-          className="absolute top-1 bottom-1 rounded-lg bg-surface shadow-[0_1px_3px_rgb(18_29_51/0.12)] transition-[left,width] duration-300 ease-[var(--ease-out-soft)]"
+          className="absolute top-1 bottom-1 rounded-lg bg-surface shadow-raised transition-[left,width] duration-300 ease-[var(--ease-out-soft)]"
           style={{ left: pill.left, width: pill.width }}
         />
       )}
@@ -256,7 +296,7 @@ function Tabs() {
           aria-selected={tab === t.id}
           onClick={() => setTab(t.id)}
           className={cx(
-            'relative flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
+            'relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] xl:px-3 font-medium transition-colors',
             tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink-2',
           )}
         >
@@ -282,6 +322,8 @@ function CurrentView({ tab }: { tab: ViewTab }) {
   switch (tab) {
     case 'timeline':
       return <GanttView />;
+    case 'risks':
+      return <RisksView />;
     case 'graph':
       return (
         <Suspense fallback={<Skeleton className="m-6 h-[420px]" />}>
@@ -340,20 +382,72 @@ function SidePanel() {
   );
 }
 
+/** Кнопка сравнения вариантов: появляется, когда есть что сравнивать. */
+function VariantsButton() {
+  const count = useDraft((s) => s.scenarios.length);
+  const setCompareOpen = useDraft((s) => s.setCompareOpen);
+  if (count === 0) return null;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-8 shrink-0"
+      onClick={() => setCompareOpen(true)}
+      title="Сравнить сохранённые варианты"
+      aria-label={`Сравнить варианты: ${count}`}
+    >
+      <Columns3 size={15} />
+      <span className="hidden 2xl:inline">Варианты ·</span> {count}
+    </Button>
+  );
+}
+
 /** Закреплённая панель черновика: применить или отменить можно из любого места боковой колонки. */
 function DraftBar() {
   const { base, ops } = useModel();
+  const reason = useDraft((s) => s.reason);
+  const lastAction = useDraft((s) => s.lastAction);
+  const setReason = useDraft((s) => s.setReason);
   const clearDraft = useDraft((s) => s.clearDraft);
+  const scenarios = useDraft((s) => s.scenarios);
+  const saveScenario = useDraft((s) => s.saveScenario);
   const apply = useApplyChanges(base.project.id);
-  const [reason, setReason] = useState('');
   const n = ops.length;
+  const saved = scenarios.find((s) => sameOps(s.ops, ops));
+
+  const save = () => {
+    const full = scenarios.length >= SCENARIO_LETTERS.length;
+    const letter = saveScenario({
+      id: newId(),
+      name: lastAction || reason.trim() || summarizeOps(base, ops, 1),
+      ops,
+    });
+    toast(
+      full
+        ? `Сохранено как вариант ${letter}, самый старый вариант удалён`
+        : `Сохранено как вариант ${letter}. Отмените черновик и соберите следующий — или сравните`,
+      'success',
+    );
+  };
 
   return (
     <div className="glass animate-toast-in sticky bottom-0 z-10 border-t border-line/80 px-5 pt-3 pb-4">
-      <p className="flex items-center gap-2 text-[12px] text-ink-2">
-        <span className="h-2 w-2 rounded-full bg-wave" />
-        Черновик: {n} {plural(n, 'изменение', 'изменения', 'изменений')}, план ещё не изменён
-      </p>
+      <div className="flex items-center gap-2 text-[12px] text-ink-2">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-wave" />
+        <span className="flex-1">
+          Черновик: {n} {plural(n, 'изменение', 'изменения', 'изменений')}, план ещё не изменён
+        </span>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saved !== undefined}
+          title="Сохранить черновик, чтобы сравнить с другими вариантами"
+          className="-my-1 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 font-medium text-ink-2 transition-colors hover:bg-ink/5 hover:text-ink disabled:text-ink-3 disabled:hover:bg-transparent"
+        >
+          <BookmarkPlus size={14} />
+          {saved ? `Вариант ${saved.letter}` : 'В варианты'}
+        </button>
+      </div>
       <input
         className={inputClass + ' mt-2.5 bg-surface/80'}
         placeholder="Причина, например «подрядчик сдвинул старт»"
@@ -369,7 +463,7 @@ function DraftBar() {
           variant="primary"
           className="flex-[2]"
           disabled={apply.isPending}
-          onClick={() => apply.mutate({ ops, reason: reason || undefined }, { onSuccess: () => setReason('') })}
+          onClick={() => apply.mutate({ ops, reason: reason.trim() || undefined })}
         >
           <Check size={15} /> Применить изменения
         </Button>

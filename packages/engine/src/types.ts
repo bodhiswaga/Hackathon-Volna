@@ -162,3 +162,185 @@ export interface Analysis {
     progressPct: number;
   };
 }
+
+// --- Анализ последствий ---
+
+export interface TaskImpact {
+  taskId: string;
+  name: string;
+  /** Задача изменена самим пользователем (а не сдвинута волной). */
+  direct: boolean;
+  created: boolean;
+  startBefore: ISODate | null;
+  startAfter: ISODate;
+  endBefore: ISODate | null;
+  endAfter: ISODate;
+  /** Сдвиг в рабочих днях (после − до). */
+  deltaStart: number;
+  deltaEnd: number;
+  /** Цепочка распространения: от первопричины к этой задаче. */
+  chain: string[];
+  reason: string;
+  riskBefore: RiskLevel;
+  riskAfter: RiskLevel;
+  criticalBefore: boolean;
+  criticalAfter: boolean;
+}
+
+export interface ImpactReport {
+  directTaskIds: string[];
+  deleted: { taskId: string; name: string }[];
+  affected: TaskImpact[];
+  /** Сколько задач сдвинулось волной (не считая изменённых напрямую). */
+  wavedCount: number;
+  finishBefore: ISODate;
+  finishAfter: ISODate;
+  finishDelta: number;
+  deadlineBefore: ISODate;
+  deadlineAfter: ISODate;
+  bufferBefore: number;
+  bufferAfter: number;
+  newAlerts: Alert[];
+  resolvedAlerts: Alert[];
+  criticalAdded: string[];
+  criticalRemoved: string[];
+  verdict: Health;
+  headline: string;
+  attention: string[];
+}
+
+// --- Советник по срокам ---
+
+export type SuggestionKind =
+  'crash' | 'parallelize' | 'removeLag' | 'removeConstraint' | 'reassign' | 'moveDeadline';
+
+export interface Suggestion {
+  id: string;
+  kind: SuggestionKind;
+  title: string;
+  description: string;
+  ops: ChangeOp[];
+  /** На сколько рабочих дней раньше закончится проект. */
+  gainDays: number;
+  finishAfter: ISODate;
+  bufferAfter: number;
+  fitsDeadline: boolean;
+  /** Условная «цена» решения: 1 — дёшево, 3 — дорого или рискованно. */
+  cost: 1 | 2 | 3;
+  /** Какие проблемы снимает (тексты алертов). */
+  resolves: string[];
+}
+
+export interface RecoveryPlan {
+  steps: Suggestion[];
+  ops: ChangeOp[];
+  finishAfter: ISODate;
+  bufferAfter: number;
+  fitsDeadline: boolean;
+}
+
+export interface Advice {
+  suggestions: Suggestion[];
+  plan: RecoveryPlan | null;
+}
+
+// --- Прогноз «Шанс успеть» ---
+
+/**
+ * Разброс длительности незавершённых задач — доли плана. Треугольное распределение с модой
+ * «как в плане»: оценки обычно оптимистичны, поэтому хвост вправо длиннее.
+ */
+export interface Spread {
+  optimistic: number;
+  pessimistic: number;
+  /** Для задач подрядчика и заблокированных задач. */
+  riskyPessimistic: number;
+}
+
+export interface Forecast {
+  runs: number;
+  /** Доля прогонов, где проект укладывается в дедлайн (0…1). */
+  chance: number;
+  /** Доля прогонов, где проект заканчивается не позже плановой (детерминированной) даты. */
+  planChance: number;
+  p50: ISODate;
+  p80: ISODate;
+  p95: ISODate;
+  /** Распределение даты финиша: index — исключающий конец, как `Analysis.finishIndex`. */
+  histogram: { index: number; date: ISODate; count: number }[];
+  /** В какой доле прогонов задача лежала на цепочке, определившей финиш. */
+  drivers: { taskId: string; share: number }[];
+}
+
+// --- События «Что случилось?» ---
+
+/** События из жизни проекта: руководитель описывает, что случилось, а не какие поля править. */
+export type ProjectEvent =
+  | {
+      kind: 'absence';
+      personId: string;
+      from: ISODate;
+      to: ISODate;
+      /** Кому передать задачи на время отсутствия; null — задачи встают на паузу. */
+      handoverTo: string | null;
+    }
+  | { kind: 'harder'; taskId: string; extraDays: number }
+  | { kind: 'delay'; taskId: string; until: ISODate }
+  | {
+      kind: 'scope';
+      name: string;
+      durationDays: number;
+      afterTaskId: string | null;
+      beforeTaskId: string | null;
+      assigneeId: string | null;
+    }
+  | { kind: 'deadline'; deadline: ISODate };
+
+export type ProjectEventKind = ProjectEvent['kind'];
+
+export interface CompiledEvent {
+  ops: ChangeOp[];
+  /** Короткое описание для причины изменения в журнале. */
+  title: string;
+}
+
+// --- Шторм-тест ---
+
+export interface Threat {
+  id: string;
+  kind: 'harder' | 'absence' | 'delay';
+  title: string;
+  detail: string;
+  /** Главная задача сценария — для подсветки. */
+  taskId: string | null;
+  ops: ChangeOp[];
+  /** Причина для журнала, если сценарий проиграть и применить. */
+  reason: string;
+  finishDelta: number;
+  bufferAfter: number;
+  breaksDeadline: boolean;
+  /** Сколько новых серьёзных проблем (high-алертов) появится. */
+  newProblems: number;
+}
+
+// --- Брифинг «Сообщить» ---
+
+export interface TeamMessage {
+  personId: string;
+  name: string;
+  text: string;
+}
+
+export interface BriefSection {
+  title: string;
+  lines: string[];
+}
+
+export interface Brief {
+  subject: string;
+  greeting: string;
+  /** Письмо заказчику по разделам — для показа; `client` — то же одним текстом для копирования. */
+  sections: BriefSection[];
+  client: string;
+  team: TeamMessage[];
+}

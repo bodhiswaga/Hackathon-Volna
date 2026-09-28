@@ -75,7 +75,13 @@ export function IconButton({
   );
 }
 
-export function Avatar({ person, size = 22 }: { person: Person | undefined | null; size?: number }) {
+export function Avatar({
+  person,
+  size = 22,
+}: {
+  person: Person | undefined | null;
+  size?: number;
+}) {
   if (!person) {
     return (
       <span
@@ -148,7 +154,15 @@ export function Chip({
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
+export function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: ReactNode;
+}) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-ink-2">{label}</span>
@@ -160,6 +174,52 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 
 export const inputClass =
   'h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none transition-[border-color,box-shadow] placeholder:text-ink-3 hover:border-ink-3 focus:border-cobalt focus:ring-3 focus:ring-cobalt/15';
+
+/** Сегментный переключатель: выбор одного из нескольких вариантов (или вкладок окна). */
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  kind = 'radio',
+  className,
+}: {
+  value: T;
+  options: readonly { id: T; label: ReactNode }[];
+  onChange: (value: T) => void;
+  label: string;
+  kind?: 'radio' | 'tab';
+  className?: string;
+}) {
+  return (
+    <div
+      role={kind === 'tab' ? 'tablist' : 'radiogroup'}
+      aria-label={label}
+      className={cx('grid gap-1 rounded-xl bg-ink/[0.05] p-1', className)}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {options.map((o) => {
+        const active = o.id === value;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role={kind}
+            aria-checked={kind === 'radio' ? active : undefined}
+            aria-selected={kind === 'tab' ? active : undefined}
+            onClick={() => onChange(o.id)}
+            className={cx(
+              'h-8 rounded-lg text-[13px] font-medium transition-colors',
+              active ? 'bg-surface text-ink shadow-raised' : 'text-ink-3 hover:text-ink-2',
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Заголовок блока в боковой панели. */
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
@@ -195,7 +255,11 @@ export function Toasts() {
             <span
               className={cx(
                 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
-                t.tone === 'error' ? 'bg-crimson' : t.tone === 'success' ? 'bg-moss' : 'bg-white/15',
+                t.tone === 'error'
+                  ? 'bg-crimson'
+                  : t.tone === 'success'
+                    ? 'bg-moss'
+                    : 'bg-white/15',
               )}
             >
               <Icon size={13} strokeWidth={2.5} />
@@ -230,7 +294,9 @@ function markPath(phase: number): string {
   return `M${pts.join(' L')}`;
 }
 const MARK_STATIC = markPath(0.6);
-const MARK_FRAMES = Array.from({ length: 13 }, (_, i) => markPath(0.6 - (i / 12) * Math.PI * 2)).join(';');
+const MARK_FRAMES = Array.from({ length: 13 }, (_, i) =>
+  markPath(0.6 - (i / 12) * Math.PI * 2),
+).join(';');
 
 export function WaveMark({ size = 28, animated = true }: { size?: number; animated?: boolean }) {
   return (
@@ -257,7 +323,10 @@ const SEA_PERIOD = 1200;
 function seaPath(harmonics: [amp: number, freq: number, phase: number][]): string {
   const pts: string[] = [];
   for (let x = 0; x <= SEA_PERIOD * 2; x += 10) {
-    const y = harmonics.reduce((s, [a, f, p]) => s + a * Math.sin((2 * Math.PI * f * x) / SEA_PERIOD + p), 0);
+    const y = harmonics.reduce(
+      (s, [a, f, p]) => s + a * Math.sin((2 * Math.PI * f * x) / SEA_PERIOD + p),
+      0,
+    );
     pts.push(`${x},${y.toFixed(3)}`);
   }
   return `M${pts.join(' L')}`;
@@ -332,8 +401,20 @@ export function SeaLine({
 }) {
   return (
     <div aria-hidden className={cx('pointer-events-none overflow-hidden', className)}>
-      <SeaLayer d={SEA_BACK} amplitude={amplitude * 0.75} color={color} opacity={0.28} duration={duration * 1.7} />
-      <SeaLayer d={SEA_FRONT} amplitude={amplitude} color={color} opacity={0.7} duration={duration} />
+      <SeaLayer
+        d={SEA_BACK}
+        amplitude={amplitude * 0.75}
+        color={color}
+        opacity={0.28}
+        duration={duration * 1.7}
+      />
+      <SeaLayer
+        d={SEA_FRONT}
+        amplitude={amplitude}
+        color={color}
+        opacity={0.7}
+        duration={duration}
+      />
     </div>
   );
 }
@@ -352,7 +433,9 @@ export function Empty({
   return (
     <div className="animate-view-in flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
       {icon && (
-        <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-ink/5 text-ink-2">{icon}</span>
+        <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-ink/5 text-ink-2">
+          {icon}
+        </span>
       )}
       <p className="font-display text-[17px] font-semibold">{title}</p>
       {children && <div className="max-w-sm text-sm leading-relaxed text-ink-2">{children}</div>}
@@ -464,12 +547,13 @@ export function MenuItem({
 export function Dialog({
   onClose,
   labelledBy,
-  className,
+  width = 'max-w-md',
   children,
 }: {
   onClose: () => void;
   labelledBy?: string;
-  className?: string;
+  /** Класс максимальной ширины окна. */
+  width?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -487,8 +571,8 @@ export function Dialog({
       onClose={onClose}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       className={cx(
-        'animate-pop-in m-auto w-[calc(100%-2rem)] max-w-md rounded-3xl border-0 bg-surface p-0 text-ink shadow-float',
-        className,
+        'animate-pop-in m-auto w-[calc(100%-2rem)] rounded-3xl border-0 bg-surface p-0 text-ink shadow-float',
+        width,
       )}
     >
       {children}

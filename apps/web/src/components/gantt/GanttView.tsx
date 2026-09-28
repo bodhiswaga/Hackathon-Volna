@@ -6,6 +6,7 @@ import {
   indexToDate,
   isWeekend,
   parseDate,
+  safetyMargin,
   type ISODate,
   type TaskImpact,
 } from '@volna/engine';
@@ -61,7 +62,12 @@ export function GanttView() {
   const order = a.order;
   const range = useMemo(() => {
     const starts = [state.project.startDate, a.today, ...order.map((id) => a.tasks[id].startDate)];
-    const ends = [a.finishDate, state.project.deadline, a.today, ...order.map((id) => indexToDate(a.tasks[id].lf - 1))];
+    const ends = [
+      a.finishDate,
+      state.project.deadline,
+      a.today,
+      ...order.map((id) => indexToDate(a.tasks[id].lf - 1)),
+    ];
     if (impact) {
       starts.push(...Object.values(b.tasks).map((t) => t.startDate));
       ends.push(b.finishDate);
@@ -95,7 +101,8 @@ export function GanttView() {
   if (order.length === 0) {
     return (
       <Empty title="В проекте пока нет задач">
-        Нажмите «Задача» вверху справа, чтобы добавить первую. Даты посчитаются сами из длительности и связей.
+        Нажмите «Задача» вверху справа, чтобы добавить первую. Даты посчитаются сами из длительности
+        и связей.
       </Empty>
     );
   }
@@ -117,7 +124,11 @@ export function GanttView() {
   const hovered = hoverId && rowOf.has(hoverId) ? hoverId : null;
 
   return (
-    <div ref={rootRef} className="relative bg-surface" style={{ width: LEFT + width, minHeight: '100%' }}>
+    <div
+      ref={rootRef}
+      className="relative bg-surface"
+      style={{ width: LEFT + width, minHeight: '100%' }}
+    >
       {/* Шапка: полупрозрачная, строки видны при прокрутке под ней */}
       <div className="sticky top-0 z-20 flex">
         <div
@@ -136,14 +147,26 @@ export function GanttView() {
               {() => <Legend />}
             </Popover>
             {zoom !== null && (
-              <IconButton label="Вписать весь план в экран" className="h-7 w-7" onClick={() => setZoom(null)}>
+              <IconButton
+                label="Вписать весь план в экран"
+                className="h-7 w-7"
+                onClick={() => setZoom(null)}
+              >
                 <Maximize2 size={14} />
               </IconButton>
             )}
-            <IconButton label="Уменьшить масштаб" className="h-7 w-7" onClick={() => setZoom(Math.max(MIN_DAY_W, dayW - 4))}>
+            <IconButton
+              label="Уменьшить масштаб"
+              className="h-7 w-7"
+              onClick={() => setZoom(Math.max(MIN_DAY_W, dayW - 4))}
+            >
               <Minus size={14} />
             </IconButton>
-            <IconButton label="Увеличить масштаб" className="h-7 w-7" onClick={() => setZoom(Math.min(56, dayW + 6))}>
+            <IconButton
+              label="Увеличить масштаб"
+              className="h-7 w-7"
+              onClick={() => setZoom(Math.min(56, dayW + 6))}
+            >
               <Plus size={14} />
             </IconButton>
           </div>
@@ -154,7 +177,9 @@ export function GanttView() {
               const first = i === 0 || d.endsWith('-01');
               return (
                 <g key={d}>
-                  {isWeekend(d) && <rect x={i * dayW} y={22} width={dayW} height={HEADER - 22} fill={WEEKEND} />}
+                  {isWeekend(d) && (
+                    <rect x={i * dayW} y={22} width={dayW} height={HEADER - 22} fill={WEEKEND} />
+                  )}
                   {first && (
                     <text
                       x={i * dayW + 6}
@@ -167,7 +192,15 @@ export function GanttView() {
                       {fmtMonth(d)}
                     </text>
                   )}
-                  {first && i > 0 && <line x1={i * dayW} x2={i * dayW} y1={0} y2={HEADER} stroke="var(--color-line)" />}
+                  {first && i > 0 && (
+                    <line
+                      x1={i * dayW}
+                      x2={i * dayW}
+                      y1={0}
+                      y2={HEADER}
+                      stroke="var(--color-line)"
+                    />
+                  )}
                   {(dayW >= 18 || isMonday(d)) && (
                     <text
                       x={i * dayW + dayW / 2}
@@ -182,7 +215,15 @@ export function GanttView() {
                 </g>
               );
             })}
-            <rect x={todayX} y={27} width={dayW} height={21} rx={6} fill="var(--color-cobalt)" opacity={0.12} />
+            <rect
+              x={todayX}
+              y={27}
+              width={dayW}
+              height={21}
+              rx={6}
+              fill="var(--color-cobalt)"
+              opacity={0.12}
+            />
             <rect
               x={todayX}
               y={27}
@@ -194,8 +235,22 @@ export function GanttView() {
               strokeWidth={1.5}
             />
             {/* Подложка, чтобы подпись дедлайна не сливалась с названием месяца. */}
-            <rect x={deadlineX - 96} y={3} width={94} height={17} rx={8.5} fill="var(--color-crimson-soft)" />
-            <text x={deadlineX - 8} y={15.5} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--color-crimson)">
+            <rect
+              x={deadlineX - 96}
+              y={3}
+              width={94}
+              height={17}
+              rx={8.5}
+              fill="var(--color-crimson-soft)"
+            />
+            <text
+              x={deadlineX - 8}
+              y={15.5}
+              textAnchor="end"
+              fontSize={11}
+              fontWeight={600}
+              fill="var(--color-crimson)"
+            >
               дедлайн {fmtDate(state.project.deadline)}
             </text>
           </svg>
@@ -224,14 +279,35 @@ export function GanttView() {
               >
                 <StatusDot status={t.status} />
                 <span
-                  className={cx('min-w-0 flex-1 truncate', t.status === 'done' ? 'text-ink-3' : 'text-ink')}
+                  className={cx(
+                    'min-w-0 flex-1 truncate',
+                    t.status === 'done' ? 'text-ink-3' : 'text-ink',
+                  )}
                   title={`${t.name}: ${STATUS_LABEL[t.status]}`}
                 >
                   {t.name}
                 </span>
-                {s.flags.critical && <Flame size={14} className="shrink-0 text-crimson" aria-label="На критическом пути" />}
-                {s.risk === 'high' && <AlertTriangle size={14} className="shrink-0 text-crimson" aria-label="Под угрозой" />}
-                {s.flags.overloaded && <Users size={14} className="shrink-0 text-wave" aria-label="Исполнитель перегружен" />}
+                {s.flags.critical && (
+                  <Flame
+                    size={14}
+                    className="shrink-0 text-crimson"
+                    aria-label="На критическом пути"
+                  />
+                )}
+                {s.risk === 'high' && (
+                  <AlertTriangle
+                    size={14}
+                    className="shrink-0 text-crimson"
+                    aria-label="Под угрозой"
+                  />
+                )}
+                {s.flags.overloaded && (
+                  <Users
+                    size={14}
+                    className="shrink-0 text-wave"
+                    aria-label="Исполнитель перегружен"
+                  />
+                )}
                 <Avatar person={t.assigneeId ? peopleById.get(t.assigneeId) : null} size={20} />
               </button>
             );
@@ -242,16 +318,35 @@ export function GanttView() {
         <svg width={width} height={height} className="block">
           <defs>
             {Object.values(EDGE).map((e) => (
-              <marker key={e.marker} id={e.marker} viewBox="0 0 8 8" refX={7} refY={4} markerWidth={7} markerHeight={7} orient="auto">
+              <marker
+                key={e.marker}
+                id={e.marker}
+                viewBox="0 0 8 8"
+                refX={7}
+                refY={4}
+                markerWidth={7}
+                markerHeight={7}
+                orient="auto"
+              >
                 <path d="M0,0 L8,4 L0,8 z" fill={e.color} />
               </marker>
             ))}
-            <pattern id="ghost-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <pattern
+              id="ghost-hatch"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
               <line x1="0" y1="0" x2="0" y2="6" stroke="var(--color-idle)" strokeWidth="1.5" />
             </pattern>
           </defs>
 
-          {days.map((d, i) => (isWeekend(d) ? <rect key={d} x={i * dayW} y={0} width={dayW} height={height} fill={WEEKEND} /> : null))}
+          {days.map((d, i) =>
+            isWeekend(d) ? (
+              <rect key={d} x={i * dayW} y={0} width={dayW} height={height} fill={WEEKEND} />
+            ) : null,
+          )}
           {order.map((id, i) => (
             <g key={id}>
               {(selectedId === id || hovered === id) && (
@@ -264,13 +359,41 @@ export function GanttView() {
                   opacity={selectedId === id ? 0.6 : 0.7}
                 />
               )}
-              <line x1={0} x2={width} y1={(i + 1) * ROW} y2={(i + 1) * ROW} stroke="var(--color-line-soft)" />
+              <line
+                x1={0}
+                x2={width}
+                y1={(i + 1) * ROW}
+                y2={(i + 1) * ROW}
+                stroke="var(--color-line-soft)"
+              />
             </g>
           ))}
 
-          <rect x={todayX} y={0} width={dayW} height={height} fill="var(--color-cobalt)" opacity={0.05} />
-          <line x1={todayX} x2={todayX} y1={0} y2={height} stroke="var(--color-cobalt)" strokeWidth={1.5} />
-          <line x1={deadlineX} x2={deadlineX} y1={0} y2={height} stroke="var(--color-crimson)" strokeWidth={2} strokeDasharray="6 4" />
+          <rect
+            x={todayX}
+            y={0}
+            width={dayW}
+            height={height}
+            fill="var(--color-cobalt)"
+            opacity={0.05}
+          />
+          <line
+            x1={todayX}
+            x2={todayX}
+            y1={0}
+            y2={height}
+            stroke="var(--color-cobalt)"
+            strokeWidth={1.5}
+          />
+          <line
+            x1={deadlineX}
+            x2={deadlineX}
+            y1={0}
+            y2={height}
+            stroke="var(--color-crimson)"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+          />
 
           {/* Связи */}
           {state.dependencies.map((d) => {
@@ -282,7 +405,8 @@ export function GanttView() {
             const x2 = s.milestone ? s.x1 - 8 : s.x1;
             const y2 = s.y + BAR_H / 2;
             const drv = a.tasks[d.successorId].driver;
-            const wave = affected.has(d.successorId) && drv.kind === 'dependency' && drv.dependencyId === d.id;
+            const wave =
+              affected.has(d.successorId) && drv.kind === 'dependency' && drv.dependencyId === d.id;
             const edge = wave ? EDGE.wave : critDeps.has(d.id) ? EDGE.critical : EDGE.plain;
             const rowBoundary = Math.max(p.y, s.y) - (ROW - BAR_H) / 2;
             const path =
@@ -306,11 +430,25 @@ export function GanttView() {
           {impact &&
             order.map((id) => {
               const imp = affected.get(id);
-              if (!imp || imp.created || (imp.deltaStart === 0 && imp.deltaEnd === 0) || !b.tasks[id]) return null;
+              if (
+                !imp ||
+                imp.created ||
+                (imp.deltaStart === 0 && imp.deltaEnd === 0) ||
+                !b.tasks[id]
+              )
+                return null;
               const g = barGeom(id, 'before');
               if (g.milestone) {
                 const cy = g.y + BAR_H / 2;
-                return <path key={id} d={`M${g.x2},${cy - 8} l8,8 l-8,8 l-8,-8 z`} fill="none" stroke="var(--color-idle)" strokeDasharray="3 2" />;
+                return (
+                  <path
+                    key={id}
+                    d={`M${g.x2},${cy - 8} l8,8 l-8,8 l-8,-8 z`}
+                    fill="none"
+                    stroke="var(--color-idle)"
+                    strokeDasharray="3 2"
+                  />
+                );
               }
               return (
                 <rect
@@ -362,7 +500,13 @@ export function GanttView() {
                 onMouseLeave={() => setHoverId(null)}
               >
                 {/* Невидимая зона наведения на всю строку, чтобы карточка не мерцала между полосой и резервом */}
-                <rect x={Math.min(g.x1, g.x2) - 10} y={g.y - 8} width={w + 20} height={BAR_H + 16} fill="transparent" />
+                <rect
+                  x={Math.min(g.x1, g.x2) - 10}
+                  y={g.y - 8}
+                  width={w + 20}
+                  height={BAR_H + 16}
+                  fill="transparent"
+                />
                 {t.status !== 'done' && s.float > 0 && !g.milestone && (
                   <g stroke="var(--color-idle)" strokeWidth={1.2}>
                     <line x1={g.x2} x2={floatEndX} y1={cy} y2={cy} strokeDasharray="2 3" />
@@ -372,15 +516,38 @@ export function GanttView() {
                 {g.milestone ? (
                   <path
                     d={`M${g.x2},${cy - 9} l9,9 l-9,9 l-9,-9 z`}
-                    fill={shifted ? 'var(--color-wave)' : crit ? 'var(--color-crimson)' : 'var(--color-ink)'}
+                    fill={
+                      shifted
+                        ? 'var(--color-wave)'
+                        : crit
+                          ? 'var(--color-crimson)'
+                          : 'var(--color-ink)'
+                    }
                     stroke={selectedId === id ? 'var(--color-ink)' : 'none'}
                     strokeWidth={2}
                   />
                 ) : (
                   <>
-                    <rect x={g.x1} y={g.y} width={w} height={BAR_H} rx={6} fill={fill} stroke={stroke} strokeWidth={crit || selectedId === id ? 2 : 1} />
+                    <rect
+                      x={g.x1}
+                      y={g.y}
+                      width={w}
+                      height={BAR_H}
+                      rx={6}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={crit || selectedId === id ? 2 : 1}
+                    />
                     {t.status === 'in_progress' && !shifted && todayX > g.x1 && (
-                      <rect x={g.x1} y={g.y} width={Math.min(w, todayX - g.x1)} height={BAR_H} rx={6} fill="#1c34a8" opacity={0.5} />
+                      <rect
+                        x={g.x1}
+                        y={g.y}
+                        width={Math.min(w, todayX - g.x1)}
+                        height={BAR_H}
+                        rx={6}
+                        fill="#1c34a8"
+                        opacity={0.5}
+                      />
                     )}
                     {w >= 44 && (
                       <text
@@ -388,7 +555,9 @@ export function GanttView() {
                         y={cy + 4}
                         fontSize={11}
                         fontWeight={600}
-                        fill={t.status === 'not_started' && !shifted ? 'var(--color-ink-2)' : '#fff'}
+                        fill={
+                          t.status === 'not_started' && !shifted ? 'var(--color-ink-2)' : '#fff'
+                        }
                       >
                         {t.durationDays} дн.
                       </text>
@@ -412,9 +581,23 @@ export function GanttView() {
                   </g>
                 )}
                 {imp && imp.deltaEnd !== 0 && (
-                  <g transform={`translate(${Math.max(g.x2, t.dueDate ? x(t.dueDate) + dayW : 0) + (g.milestone ? 14 : 8)}, ${g.y + 1})`}>
-                    <rect width={imp.deltaEnd > 0 ? 50 : 46} height={18} rx={9} fill={imp.deltaEnd > 0 ? 'var(--color-wave)' : 'var(--color-moss)'} />
-                    <text x={imp.deltaEnd > 0 ? 25 : 23} y={13} textAnchor="middle" fontSize={11} fontWeight={700} fill="#fff">
+                  <g
+                    transform={`translate(${Math.max(g.x2, t.dueDate ? x(t.dueDate) + dayW : 0) + (g.milestone ? 14 : 8)}, ${g.y + 1})`}
+                  >
+                    <rect
+                      width={imp.deltaEnd > 0 ? 50 : 46}
+                      height={18}
+                      rx={9}
+                      fill={imp.deltaEnd > 0 ? 'var(--color-wave)' : 'var(--color-moss)'}
+                    />
+                    <text
+                      x={imp.deltaEnd > 0 ? 25 : 23}
+                      y={13}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fontWeight={700}
+                      fill="#fff"
+                    >
                       {fmtDays(imp.deltaEnd, true)}
                     </text>
                   </g>
@@ -465,7 +648,10 @@ function HoverCard({
       className="pointer-events-none absolute z-40"
       style={{ left, top, width: CARD_W, transform: below ? undefined : 'translateY(-100%)' }}
     >
-      <div role="tooltip" className="glass-strong animate-pop-in rounded-2xl border border-line/70 p-3.5 shadow-float">
+      <div
+        role="tooltip"
+        className="glass-strong animate-pop-in rounded-2xl border border-line/70 p-3.5 shadow-float"
+      >
         <div className="flex items-start gap-2">
           <StatusDot status={t.status} />
           <p className="-mt-1 min-w-0 flex-1 text-[13px] leading-snug font-semibold">{t.name}</p>
@@ -481,26 +667,42 @@ function HoverCard({
             {fmtDate(s.startDate)} — {fmtDate(s.endDate)}
           </dd>
           <dt className="text-ink-3">Длительность</dt>
-          <dd className="text-right font-medium">{t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}</dd>
+          <dd className="text-right font-medium">
+            {t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}
+          </dd>
           {t.status !== 'done' && (
             <>
               <dt className="text-ink-3">Резерв</dt>
               <dd className={cx('text-right font-medium', s.flags.critical && 'text-crimson')}>
                 {s.flags.critical ? 'нет' : fmtDays(s.float)}
               </dd>
+              <dt
+                className="text-ink-3"
+                title="На сколько задача может опоздать, прежде чем сорвётся дедлайн"
+              >
+                Запас прочности
+              </dt>
+              <dd
+                className={cx('text-right font-medium', safetyMargin(s, a) <= 0 && 'text-crimson')}
+              >
+                {fmtDays(safetyMargin(s, a))}
+              </dd>
             </>
           )}
           {t.dueDate && (
             <>
               <dt className="text-ink-3">Срок задачи</dt>
-              <dd className={cx('text-right font-medium', s.flags.missesDueDate && 'text-crimson')}>{fmtDate(t.dueDate)}</dd>
+              <dd className={cx('text-right font-medium', s.flags.missesDueDate && 'text-crimson')}>
+                {fmtDate(t.dueDate)}
+              </dd>
             </>
           )}
         </dl>
         {imp && imp.deltaEnd !== 0 && (
           <div className="mt-2.5">
             <Chip tone={imp.deltaEnd > 0 ? 'wave' : 'moss'}>
-              окончание {fmtDays(imp.deltaEnd, true)}: {fmtDate(imp.endBefore)} → {fmtDate(imp.endAfter)}
+              окончание {fmtDays(imp.deltaEnd, true)}: {fmtDate(imp.endBefore)} →{' '}
+              {fmtDate(imp.endAfter)}
             </Chip>
           </div>
         )}
@@ -517,7 +719,10 @@ function Legend() {
     </li>
   );
   const box = (bg: string, border?: string) => (
-    <span className="inline-block h-3 w-6 rounded-[5px]" style={{ background: bg, border: border ? `2px solid ${border}` : undefined }} />
+    <span
+      className="inline-block h-3 w-6 rounded-[5px]"
+      style={{ background: bg, border: border ? `2px solid ${border}` : undefined }}
+    />
   );
   return (
     <>
@@ -530,10 +735,16 @@ function Legend() {
         {item(box(FILL.not_started, 'var(--color-crimson)'), 'На критическом пути')}
         {item(box('var(--color-wave)'), 'Сдвинута изменением из черновика')}
         {item(box('transparent', 'var(--color-idle)'), 'Прежние даты (призрак)')}
-        {item(<span className="inline-block w-6 border-t-2 border-dotted border-idle" />, 'Резерв: насколько можно сдвинуть')}
+        {item(
+          <span className="inline-block w-6 border-t-2 border-dotted border-idle" />,
+          'Резерв: насколько можно сдвинуть',
+        )}
         {item(<span className="inline-block h-3.5 w-0.5 bg-ink-2" />, 'Срок задачи')}
         {item(<span className="inline-block h-3.5 w-0.5 bg-cobalt" />, 'Сегодня')}
-        {item(<span className="inline-block h-3.5 border-l-2 border-dashed border-crimson" />, 'Дедлайн проекта')}
+        {item(
+          <span className="inline-block h-3.5 border-l-2 border-dashed border-crimson" />,
+          'Дедлайн проекта',
+        )}
       </ul>
     </>
   );

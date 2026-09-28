@@ -1,22 +1,46 @@
 import { useMemo } from 'react';
-import { Check, Lightbulb, X } from 'lucide-react';
-import { advise, type Suggestion } from '@volna/engine';
-import { fmtDate, fmtDays, fmtDaysLong } from '../../lib/format';
-import { useModel, usePropose } from '../../lib/model';
-import { toast, useDraft } from '../../store/draft';
+import { BookmarkPlus, Check, Lightbulb, X } from 'lucide-react';
+import { advise, applyChangeSet, forecast, mergeOps, type Suggestion } from '@volna/engine';
+import { chanceTone, fmtChance, fmtDate, fmtDays, fmtDaysLong, newId } from '../../lib/format';
+import { useModel, useProposeAction } from '../../lib/model';
+import { sameOps, toast, useDraft } from '../../store/draft';
 import { Button, Chip, cx, IconButton, SectionTitle } from '../ui';
 
 const COST_LABEL = { 1: 'низкая', 2: 'средняя', 3: 'высокая' } as const;
 
 export function AdvisorPanel() {
-  const { state, analysis, today, impact } = useModel();
+  const { state, analysis, today, impact, ops } = useModel();
   const setSide = useDraft((s) => s.setSide);
-  const propose = usePropose();
+  const scenarios = useDraft((s) => s.scenarios);
+  const saveScenario = useDraft((s) => s.saveScenario);
+  const proposeAction = useProposeAction();
   const advice = useMemo(() => advise(state, today), [state, today]);
+  // План советника считается по черновику: вариант = черновик + шаги плана.
+  const planOps = useMemo(
+    () => (advice.plan ? advice.plan.ops.reduce(mergeOps, ops) : null),
+    [advice.plan, ops],
+  );
+  const planChance = useMemo(
+    () => (advice.plan ? forecast(applyChangeSet(state, advice.plan.ops), today).chance : null),
+    [advice.plan, state, today],
+  );
+  // Надёжность каждого варианта — тем же прогнозом, что и в статусной полосе (прогонов меньше ради скорости).
+  const chances = useMemo(
+    () =>
+      new Map(
+        advice.suggestions.map((s) => [
+          s.id,
+          forecast(applyChangeSet(state, s.ops), today, { runs: 600 }).chance,
+        ]),
+      ),
+    [advice.suggestions, state, today],
+  );
+  const planSaved = planOps !== null && scenarios.some((s) => sameOps(s.ops, planOps));
   const late = analysis.bufferDays < 0;
 
-  const tryOps = (s: Pick<Suggestion, 'ops'>, message: string) => {
-    if (propose(...s.ops)) {
+  // Решение советника — не причина изменения, поэтому в журнал его не подставляем.
+  const tryOps = (s: Pick<Suggestion, 'ops' | 'title'>, message: string) => {
+    if (proposeAction(s.ops, { action: s.title })) {
       toast(message, 'success');
       setSide('auto');
     }
@@ -42,7 +66,9 @@ export function AdvisorPanel() {
       {advice.plan && (
         <div className="mt-4 overflow-hidden rounded-2xl bg-ink text-white">
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
-            <h3 className="font-display text-[15px] font-semibold whitespace-nowrap">План восстановления</h3>
+            <h3 className="font-display text-[15px] font-semibold whitespace-nowrap">
+              План восстановления
+            </h3>
             <span
               className={cx(
                 'rounded-full px-2 py-0.5 text-[12px] font-medium whitespace-nowrap',
@@ -67,14 +93,50 @@ export function AdvisorPanel() {
               </li>
             ))}
           </ol>
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <p className="text-[13px] text-white/70">
-              Финиш после плана: <span className="font-medium text-white">{fmtDate(advice.plan.finishAfter)}</span>
+          <p className="mt-4 border-t border-white/10 px-4 pt-3 text-[13px] text-white/70">
+            Финиш после плана:{' '}
+            <span className="font-medium text-white">{fmtDate(advice.plan.finishAfter)}</span>
+            {planChance !== null && (
+              <>
+                , шанс успеть{' '}
+                <span
+                  className={cx(
+                    'font-medium',
+                    planChance < 0.5 ? 'text-crimson-light' : 'text-white',
+                  )}
+                >
+                  {fmtChance(planChance)}
+                </span>
+              </>
+            )}
+          </p>
+          {planChance !== null && planChance < 0.5 && advice.plan.fitsDeadline && (
+            <p className="px-4 pt-1 text-[12px] leading-snug text-white/55">
+              Дедлайн формально сохраняется, но запаса почти нет: сравните с переносом дедлайна.
             </p>
+          )}
+          <div className="flex items-center justify-end gap-2 px-4 pt-3 pb-3">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-white/75 hover:bg-white/10 hover:text-white"
+              disabled={planSaved}
+              onClick={() => {
+                saveScenario({ id: newId(), name: 'План советника', ops: planOps! });
+                toast('План советника сохранён в варианты', 'success');
+              }}
+            >
+              <BookmarkPlus size={14} /> {planSaved ? 'В вариантах' : 'В варианты'}
+            </Button>
             <Button
               size="sm"
               className="border-transparent"
-              onClick={() => tryOps(advice.plan!, 'План добавлен в черновик — проверьте последствия')}
+              onClick={() =>
+                tryOps(
+                  { ...advice.plan!, title: 'План советника' },
+                  'План добавлен в черновик — проверьте последствия',
+                )
+              }
             >
               <Check size={14} /> Попробовать план
             </Button>
@@ -83,7 +145,9 @@ export function AdvisorPanel() {
       )}
 
       <div className="mt-6">
-        <SectionTitle>{advice.suggestions.length > 0 ? 'Все варианты' : 'Вариантов нет'}</SectionTitle>
+        <SectionTitle>
+          {advice.suggestions.length > 0 ? 'Все варианты' : 'Вариантов нет'}
+        </SectionTitle>
         {advice.suggestions.length === 0 && (
           <p className="text-[13px] text-ink-3">
             {late
@@ -93,21 +157,35 @@ export function AdvisorPanel() {
         )}
         <ul className="space-y-2">
           {advice.suggestions.map((s) => (
-            <li key={s.id} className="rounded-2xl border border-line p-3.5 transition-colors hover:border-ink-3/60">
+            <li
+              key={s.id}
+              className="rounded-2xl border border-line p-3.5 transition-colors hover:border-ink-3/60"
+            >
               <p className="text-[13px] leading-snug font-medium">{s.title}</p>
               <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{s.description}</p>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 {s.gainDays > 0 && <Chip tone="moss">финиш {fmtDays(-s.gainDays)}</Chip>}
+                <Chip tone={chanceTone(chances.get(s.id) ?? 0)}>
+                  шанс {fmtChance(chances.get(s.id) ?? 0)}
+                </Chip>
                 {late && (
                   <Chip tone={s.fitsDeadline ? 'moss' : 'neutral'}>
-                    {s.fitsDeadline ? 'укладываемся в дедлайн' : `ещё не хватает ${fmtDays(-s.bufferAfter)}`}
+                    {s.fitsDeadline
+                      ? 'укладываемся в дедлайн'
+                      : `ещё не хватает ${fmtDays(-s.bufferAfter)}`}
                   </Chip>
                 )}
-                {s.resolves.length > 0 && s.kind === 'reassign' && <Chip tone="cobalt">снимает перегрузку</Chip>}
+                {s.resolves.length > 0 && s.kind === 'reassign' && (
+                  <Chip tone="cobalt">снимает перегрузку</Chip>
+                )}
                 <span className={cx('text-[12px]', s.cost === 3 ? 'text-crimson' : 'text-ink-3')}>
                   цена: {COST_LABEL[s.cost]}
                 </span>
-                <Button size="sm" className="ml-auto" onClick={() => tryOps(s, 'Вариант добавлен в черновик')}>
+                <Button
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => tryOps(s, 'Вариант добавлен в черновик')}
+                >
                   Попробовать
                 </Button>
               </div>

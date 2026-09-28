@@ -1,4 +1,12 @@
-import { formatShort, parseDate, plural, pluralDays, type Health, type ISODate, type TaskStatus } from '@volna/engine';
+import {
+  formatShort,
+  parseDate,
+  plural,
+  pluralDays,
+  type Health,
+  type ISODate,
+  type TaskStatus,
+} from '@volna/engine';
 
 export const HEALTH_TEXT: Record<Health, string> = {
   ok: 'Идёт по плану',
@@ -97,4 +105,24 @@ export function fmtTasks(n: number): string {
 /** «сдвигается 1 зависимая задача», «сдвигаются 3 зависимые задачи». */
 export function fmtShiftedTasks(n: number): string {
   return `${plural(n, 'сдвигается', 'сдвигаются', 'сдвигаются')} ${n} ${plural(n, 'зависимая задача', 'зависимые задачи', 'зависимых задач')}`;
+}
+
+/** «запас 3 дн.» / «опоздание 2 дн.» */
+export function fmtBuffer(n: number): string {
+  return n < 0 ? `опоздание ${fmtDays(-n)}` : `запас ${fmtDays(n)}`;
+}
+
+/** «78%» */
+export function fmtChance(x: number): string {
+  return `${Math.round(x * 100)}%`;
+}
+
+/** Цвет вероятности: уверенно / на грани / вряд ли успеем. */
+export function chanceTone(x: number): 'moss' | 'ochre' | 'crimson' {
+  return x >= 0.8 ? 'moss' : x >= 0.5 ? 'ochre' : 'crimson';
+}
+
+/** Класс цвета текста для вероятности. */
+export function chanceText(x: number): string {
+  return { moss: 'text-moss', ochre: 'text-ochre', crimson: 'text-crimson' }[chanceTone(x)];
 }

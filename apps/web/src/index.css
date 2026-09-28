@@ -24,9 +24,15 @@
   --color-ochre: #bd861b;
   --color-ochre-soft: #fbf0dc;
   --color-idle: #aab3c3;
+  /* Светлые варианты сигналов — для текста на тёмной статусной полосе и тёмных карточках. */
+  --color-moss-light: #7fdcb0;
+  --color-wave-light: #ffb27a;
+  --color-crimson-light: #ff8d9c;
   --color-bar-idle: #e1e6ee;
 
   --shadow-float: 0 1px 2px rgb(18 29 51 / 0.06), 0 12px 32px -12px rgb(18 29 51 / 0.28);
+  /* Выбранный пункт сегментного переключателя. */
+  --shadow-raised: 0 1px 3px rgb(18 29 51 / 0.12);
 
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
@@ -135,7 +141,12 @@ body {
 }
 
 @utility skeleton {
-  background: linear-gradient(90deg, var(--color-line-soft) 25%, #f6f8fb 50%, var(--color-line-soft) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--color-line-soft) 25%,
+    #f6f8fb 50%,
+    var(--color-line-soft) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
@@ -172,6 +183,28 @@ dialog::backdrop {
   background: rgb(18 29 51 / 0.32);
   backdrop-filter: blur(3px);
   animation: fade-in 200ms ease-out both;
+}
+
+/* Печать брифинга: видна только область .print-area открытого окна, без обрезки по высоте. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: fixed;
+    inset: 0;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    background: white;
+  }
+  dialog::backdrop {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

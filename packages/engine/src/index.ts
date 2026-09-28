@@ -5,3 +5,7 @@ export * from './analyze';
 export * from './changeset';
 export * from './impact';
 export * from './advisor';
+export * from './forecast';
+export * from './events';
+export * from './threats';
+export * from './brief';

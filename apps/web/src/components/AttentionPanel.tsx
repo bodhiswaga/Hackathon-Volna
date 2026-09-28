@@ -1,12 +1,22 @@
-import { AlertTriangle, CircleAlert, Flame, MousePointerClick, ShieldCheck } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronRight,
+  CircleAlert,
+  Flame,
+  MousePointerClick,
+  Radar,
+  ShieldCheck,
+} from 'lucide-react';
 import { useModel } from '../lib/model';
 import { fmtDate, fmtDays } from '../lib/format';
 import { useDraft } from '../store/draft';
 import { cx } from './ui';
 
 export function AttentionPanel() {
-  const { analysis: a, state } = useModel();
+  const { analysis: a, state, threats } = useModel();
   const select = useDraft((s) => s.select);
+  const setTab = useDraft((s) => s.setTab);
+  const topThreat = threats[0];
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
 
   return (
@@ -15,8 +25,8 @@ export function AttentionPanel() {
       {a.alerts.length === 0 ? (
         <p className="mt-3 flex gap-2.5 rounded-2xl bg-moss-soft px-3.5 py-3 text-[13px] leading-relaxed text-ink-2">
           <ShieldCheck size={17} className="mt-px shrink-0 text-moss" />
-          Угроз нет. Выберите задачу и попробуйте изменить её — Волна покажет последствия до того, как вы их
-          примените.
+          Сейчас угроз нет. Выберите задачу и попробуйте изменить её — Волна покажет последствия до
+          того, как вы их примените.
         </p>
       ) : (
         <ul className="mt-3 space-y-1.5">
@@ -42,6 +52,26 @@ export function AttentionPanel() {
             </li>
           ))}
         </ul>
+      )}
+
+      {topThreat && (
+        <button
+          type="button"
+          onClick={() => setTab('risks')}
+          className="mt-2 flex w-full items-center gap-2.5 rounded-xl border border-line px-3 py-2.5 text-left text-[13px] leading-snug transition-colors hover:border-ink-3"
+        >
+          <Radar size={16} className="shrink-0 text-ink-3" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12px] text-ink-3">Главный риск по шторм-тесту</span>
+            {topThreat.title}:{' '}
+            <span className={topThreat.breaksDeadline ? 'text-crimson' : 'text-ochre'}>
+              {topThreat.breaksDeadline
+                ? `дедлайн сорвётся на ${fmtDays(-topThreat.bufferAfter)}`
+                : `финиш ${fmtDays(topThreat.finishDelta, true)}`}
+            </span>
+          </span>
+          <ChevronRight size={15} className="shrink-0 text-ink-3" />
+        </button>
       )}
 
       {a.criticalPath.length > 0 && (
@@ -70,7 +100,8 @@ export function AttentionPanel() {
                   >
                     <span className="block truncate text-[13px] font-medium">{t.name}</span>
                     <span className="block text-[12px] text-ink-3">
-                      {fmtDate(s.startDate)} — {fmtDate(s.endDate)}, {t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}
+                      {fmtDate(s.startDate)} — {fmtDate(s.endDate)},{' '}
+                      {t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}
                     </span>
                   </button>
                 </li>
@@ -81,8 +112,8 @@ export function AttentionPanel() {
       )}
       <p className="mt-6 flex gap-2.5 rounded-2xl bg-paper px-3.5 py-3 text-[12px] leading-relaxed text-ink-2">
         <MousePointerClick size={16} className="mt-px shrink-0 text-ink-3" />
-        Выберите задачу, чтобы поменять срок, статус, ответственного или связи. Пока вы не нажали «Применить», все
-        изменения — черновик: план не меняется.
+        Выберите задачу, чтобы поменять срок, статус, ответственного или связи. Пока вы не нажали
+        «Применить», все изменения — черновик: план не меняется.
       </p>
     </div>
   );

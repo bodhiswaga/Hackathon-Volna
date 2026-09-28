@@ -1,10 +1,4 @@
-import {
-  daysText,
-  endIndex,
-  formatShort,
-  indexToDate,
-  startIndex,
-} from './calendar';
+import { daysText, endIndex, formatShort, indexToDate, startIndex } from './calendar';
 import { buildAdjacency, topoSort, type Adjacency } from './graph';
 import type {
   Alert,
@@ -24,7 +18,7 @@ export const LOW_FLOAT_DAYS = 2;
 /** Запас до дедлайна, ниже которого проект требует внимания. */
 export const LOW_BUFFER_DAYS = 2;
 
-interface Row {
+export interface ScheduleRow {
   es: number;
   ef: number;
   ls: number;
@@ -42,19 +36,21 @@ function displayEnd(es: number, ef: number, startIdx: number): ISODate {
   return indexToDate(es > startIdx ? es - 1 : es);
 }
 
-function forwardPass(
+/** Прямой проход CPM. `durationOf` подменяет длительности (прогноз Монте-Карло). */
+export function forwardPass(
   state: ProjectState,
   order: string[],
   adj: Adjacency,
   startIdx: number,
   todayIdx: number,
-): Map<string, Row> {
+  durationOf: (t: Task) => number = (t) => t.durationDays,
+): Map<string, ScheduleRow> {
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
-  const rows = new Map<string, Row>();
+  const rows = new Map<string, ScheduleRow>();
 
   for (const id of order) {
     const t = byId.get(id)!;
-    const dur = t.durationDays;
+    const dur = durationOf(t);
 
     if (t.status === 'done' && t.actualEnd) {
       const ef = endIndex(t.actualEnd);
@@ -110,7 +106,7 @@ function backwardPass(
   state: ProjectState,
   order: string[],
   adj: Adjacency,
-  rows: Map<string, Row>,
+  rows: Map<string, ScheduleRow>,
   finish: number,
 ): void {
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
@@ -127,7 +123,7 @@ function backwardPass(
   }
 }
 
-function findOverlaps(state: ProjectState, rows: Map<string, Row>): Map<string, string[]> {
+function findOverlaps(state: ProjectState, rows: Map<string, ScheduleRow>): Map<string, string[]> {
   const result = new Map<string, string[]>();
   const byPerson = new Map<string, Task[]>();
   for (const t of state.tasks) {
