@@ -17,8 +17,11 @@ import {
   personSchema,
   updateProjectSchema,
 } from '../schemas';
-import { seedDemo } from '../seed';
+import { DEMO_PROJECT_ID, seedDemo } from '../seed';
 import { HttpError } from '../errors';
+
+/** Сайт публичный и без авторизации: ограничиваем число проектов, чтобы базу не засорили. */
+const MAX_PROJECTS = 50;
 
 const PALETTE = ['#6366f1', '#ec4899', '#0ea5e9', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#14b8a6'];
 
@@ -82,6 +85,9 @@ export async function projectRoutes(app: FastifyInstance) {
 
   app.post('/api/projects', async (req, reply) => {
     const body = createProjectSchema.parse(req.body);
+    if (repo.listProjects().length >= MAX_PROJECTS) {
+      throw new HttpError(400, 'limit', `Достигнут предел в ${MAX_PROJECTS} проектов — удалите ненужные`);
+    }
     const project = {
       id: randomUUID(),
       name: body.name,
@@ -107,6 +113,9 @@ export async function projectRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>('/api/projects/:id', async (req, reply) => {
     mustLoad(req.params.id);
+    if (req.params.id === DEMO_PROJECT_ID) {
+      throw new HttpError(403, 'forbidden', 'Демо-проект нельзя удалить — его можно сбросить в меню проекта');
+    }
     repo.deleteProject(req.params.id);
     reply.code(204);
   });

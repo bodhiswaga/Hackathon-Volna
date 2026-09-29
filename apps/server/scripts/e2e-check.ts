@@ -172,6 +172,8 @@ ok(gone.status === 404, 'проект удалён');
 const demo = await call<ProjectState>('POST', '/demo/reset');
 const d = demo.data;
 const da = analyze(d, today);
+const delDemo = await call('DELETE', '/projects/demo');
+ok(delDemo.status === 403, 'общий демо-проект нельзя удалить');
 ok(d.tasks.length >= 8, `демо: ${d.tasks.length} задач (≥ 8)`);
 ok(d.dependencies.length >= 3, `демо: ${d.dependencies.length} зависимостей`);
 ok(new Set(d.tasks.map((t) => t.assigneeId)).size >= 3, 'демо: несколько ответственных');

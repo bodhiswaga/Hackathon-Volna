@@ -6,13 +6,13 @@ import Fastify, { LogController } from 'fastify';
 import { ZodError } from 'zod';
 import { ChangeSetError } from '@volna/engine';
 import { HttpError } from './errors';
-import { listProjects } from './repo';
 import { projectRoutes } from './routes/projects';
-import { seedDemo } from './seed';
+import { demoIsStale, seedDemo } from './seed';
 
 // Логи запросов отключены: во время демо они засоряют терминал.
 const app = Fastify({
   logger: { level: 'info' },
+  trustProxy: true,
   logController: new LogController({ disableRequestLogging: true }),
 });
 
@@ -36,6 +36,12 @@ app.setErrorHandler((err, _req, reply) => {
   return reply.code(500).send({ error: { code: 'internal', message: 'Внутренняя ошибка сервера' } });
 });
 
+app.addHook('onSend', async (_req, reply) => {
+  reply.header('x-content-type-options', 'nosniff');
+  reply.header('x-frame-options', 'SAMEORIGIN');
+  reply.header('referrer-policy', 'strict-origin-when-cross-origin');
+});
+
 app.get('/api/health', async () => ({ ok: true }));
 await app.register(projectRoutes);
 
@@ -45,15 +51,31 @@ await app.register(projectRoutes);
 const webDist = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist');
 const servesWeb = existsSync(webDist);
 if (servesWeb) {
-  await app.register(fastifyStatic, { root: webDist });
+  await app.register(fastifyStatic, {
+    root: webDist,
+    cacheControl: false,
+    // Файлы в assets/ с хэшем в имени кэшируются навсегда, index.html — всегда свежий.
+    setHeaders: (reply, path) => {
+      const hashed = /[\\/]assets[\\/]/.test(path);
+      reply.header('cache-control', hashed ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  });
   app.log.info('Serving built web app from apps/web/dist');
 }
 
-// Первый запуск: чтобы было что показать, создаём демо-проект.
-if (listProjects().length === 0) {
-  seedDemo();
-  app.log.info('Demo project created');
+// Демо общий для всех посетителей: создаём при первом запуске и пересоздаём, когда он устарел
+// (наступил новый день или правки давно брошены).
+function refreshDemo() {
+  try {
+    if (!demoIsStale()) return;
+    seedDemo();
+    app.log.info('Demo project (re)created');
+  } catch (err) {
+    app.log.error(err);
+  }
 }
+refreshDemo();
+setInterval(refreshDemo, 10 * 60 * 1000).unref();
 
 const port = Number(process.env.PORT ?? 3001);
 try {

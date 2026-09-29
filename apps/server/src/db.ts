@@ -24,9 +24,8 @@ export function transaction<T>(fn: () => T): T {
   }
 }
 
-/** «Сегодня» сервера в локальном часовом поясе. */
-export function todayISO(): string {
-  const d = new Date();
+/** «Сегодня» сервера (или дата момента d) в локальном часовом поясе. */
+export function todayISO(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

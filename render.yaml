@@ -1,0 +1,14 @@
+# Render Blueprint: бесплатный веб-сервис из Dockerfile.
+# Диск на бесплатном тарифе не сохраняется между перезапусками — демо-проект создаётся заново при старте.
+services:
+  - type: web
+    name: volna
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DB_PATH
+        value: /tmp/volna.db

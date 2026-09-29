@@ -139,8 +139,11 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
           </div>
         </div>
       </a>
-      <IconButton
-        label="Удалить проект"
+      {item.project.id === 'demo' ? (
+        <span className="mr-3 w-9 shrink-0" />
+      ) : (
+        <IconButton
+          label="Удалить проект"
         className="mr-3 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-crimson-soft hover:text-crimson"
         onClick={async () => {
           const ok = await confirmAction({
@@ -152,8 +155,9 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
           if (ok) remove.mutate(item.project.id);
         }}
       >
-        <Trash2 size={16} />
-      </IconButton>
+          <Trash2 size={16} />
+        </IconButton>
+      )}
     </div>
   );
 }

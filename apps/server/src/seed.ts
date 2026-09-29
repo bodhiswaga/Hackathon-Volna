@@ -10,7 +10,14 @@ import {
   type Task,
 } from '@volna/engine';
 import { db, todayISO, transaction } from './db';
-import { deleteProject, insertPerson, insertProject, loadState, replaceTasksAndDeps } from './repo';
+import {
+  deleteProject,
+  insertPerson,
+  insertProject,
+  listChangeEvents,
+  loadState,
+  replaceTasksAndDeps,
+} from './repo';
 
 export const DEMO_PROJECT_ID = 'demo';
 
@@ -147,6 +154,21 @@ export function seedDemo(): ProjectState {
     replaceTasksAndDeps(state);
   });
   return loadState(DEMO_PROJECT_ID)!;
+}
+
+/** Через сколько после последней правки общий демо возвращается в исходное состояние. */
+const DEMO_IDLE_MS = 60 * 60 * 1000;
+
+/**
+ * Демо общий для всех посетителей, поэтому его нужно пересоздать, если он удалён, создан не сегодня
+ * (даты считаются от дня сида, иначе картина съезжает) или правки в нём давно брошены.
+ */
+export function demoIsStale(now = new Date()): boolean {
+  const state = loadState(DEMO_PROJECT_ID);
+  if (!state) return true;
+  if (todayISO(new Date(state.project.createdAt)) !== todayISO(now)) return true;
+  const last = listChangeEvents(DEMO_PROJECT_ID)[0];
+  return !!last && now.getTime() - new Date(last.createdAt).getTime() > DEMO_IDLE_MS;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
