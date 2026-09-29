@@ -352,7 +352,7 @@ npm run e2e       # сквозная проверка сценариев ТЗ ч
   архитектур. БД в томе `/data`, при пустой БД демо создаётся само.
 
 ## Прод и деплой (2026-09-29)
-- Живая версия — Render Free из `render.yaml` (Docker, регион Frankfurt, `healthCheckPath: /api/health`,
+- Живая версия — https://volna-baph.onrender.com, Render Free из `render.yaml` (Docker, регион Frankfurt, `healthCheckPath: /api/health`,
   `DB_PATH=/tmp/volna.db`, автодеплой из `main`). Диск эфемерный: при рестарте база и демо создаются заново.
   Засыпание через 15 мин простоя снимает внешний пингер `GET /api/health` каждые 10 мин.
 - Демо общий для всех посетителей: `DELETE /api/projects/demo` → 403, в списке проектов у него нет кнопки удаления;
