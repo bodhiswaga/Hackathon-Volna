@@ -1,10 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Trash2, UserPlus } from 'lucide-react';
 import { usePeopleMutations } from '../api/hooks';
 import { fmtRange, fmtTasks } from '../lib/format';
 import { useModel } from '../lib/model';
 import { confirmAction, useDraft } from '../store/draft';
 import { Avatar, Button, Chip, cx, IconButton, inputClass, StatusIcon } from './ui';
+
+/** Enter в поле человека — сохранить (как везде в интерфейсе). */
+const blurOnEnter = (e: KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === 'Enter') e.currentTarget.blur();
+};
 
 export function TeamView() {
   const { state, analysis: a } = useModel();
@@ -45,11 +50,13 @@ export function TeamView() {
                   <input
                     className="w-full rounded-md border border-transparent px-1 font-medium outline-none transition-colors hover:border-line focus:border-cobalt"
                     defaultValue={p.name}
-                    onBlur={(e) =>
-                      e.target.value.trim() &&
-                      e.target.value !== p.name &&
-                      update.mutate({ personId: p.id, name: e.target.value.trim() })
-                    }
+                    onBlur={(e) => {
+                      const name = e.target.value.trim();
+                      // Пустое имя не сохраняем — возвращаем прежнее, чтобы поле не врало.
+                      if (!name) e.target.value = p.name;
+                      else if (name !== p.name) update.mutate({ personId: p.id, name });
+                    }}
+                    onKeyDown={blurOnEnter}
                     aria-label="Имя"
                   />
                   <input
@@ -60,6 +67,7 @@ export function TeamView() {
                       e.target.value !== p.role &&
                       update.mutate({ personId: p.id, role: e.target.value })
                     }
+                    onKeyDown={blurOnEnter}
                     aria-label="Роль"
                   />
                 </div>

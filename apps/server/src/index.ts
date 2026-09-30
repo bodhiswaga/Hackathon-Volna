@@ -18,8 +18,14 @@ const app = Fastify({
 
 app.setErrorHandler((err, _req, reply) => {
   if (err instanceof ZodError) {
+    // Тексты zod — английские; пользователю — по-русски, с полем, подробности — в details.
+    const path = err.issues[0]?.path.join('.');
     return reply.code(400).send({
-      error: { code: 'validation', message: err.issues[0]?.message ?? 'Некорректные данные', details: err.issues },
+      error: {
+        code: 'validation',
+        message: path ? `Некорректные данные в поле «${path}»` : 'Некорректные данные',
+        details: err.issues,
+      },
     });
   }
   if (err instanceof ChangeSetError) {

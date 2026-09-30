@@ -333,6 +333,8 @@ export function GanttView() {
     return { s, y, x1: milestone ? x2 : x1, x2, milestone };
   };
 
+  const nextMonth = days.findIndex((d, i) => i > 0 && d.endsWith('-01'));
+  const firstMonthRoom = nextMonth === -1 || nextMonth * dayW >= 76;
   const deadlineX = x(state.project.deadline) + dayW;
   const todayX = x(a.today);
   const todayIdx = diffCalendarDays(range.start, a.today);
@@ -398,7 +400,8 @@ export function GanttView() {
         <div className="border-b border-line bg-surface">
           <svg width={width} height={HEADER} className="block">
             {days.map((d, i) => {
-              const first = i === 0 || d.endsWith('-01');
+              // Подпись месяца в начале шкалы — только если до следующего месяца есть место.
+              const first = i === 0 ? firstMonthRoom : d.endsWith('-01');
               const today = i === todayIdx;
               return (
                 <g key={d}>
