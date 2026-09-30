@@ -1,25 +1,60 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, CircleHelp, Flame, Maximize2, Minus, Plus, Users } from 'lucide-react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
+import {
+  AlertTriangle,
+  CircleHelp,
+  Maximize2,
+  Minus,
+  MousePointer2,
+  Plus,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import {
   addCalendarDays,
   diffCalendarDays,
+  endIndex,
   indexToDate,
   isWeekend,
   parseDate,
   safetyMargin,
+  startIndex,
+  TASK_STATUSES,
   type Dependency,
   type ISODate,
   type Person,
   type Task,
   type TaskImpact,
   type TaskSchedule,
+  type TaskStatus,
 } from '@volna/engine';
 import { useAddTask, useModel, usePropose, useRecalcFlash } from '../../lib/model';
-import { fmtDate, fmtDays, fmtMonth, STATUS_LABEL } from '../../lib/format';
+import { fmtDate, fmtDays, fmtMonth, fmtRange, newId, STATUS_LABEL } from '../../lib/format';
 import { GLOSSARY } from '../../lib/glossary';
 import { useMediaQuery } from '../../lib/useMediaQuery';
-import { useDraft } from '../../store/draft';
-import { Avatar, Button, Chip, cx, Empty, IconButton, Popover, StatusDot, Tooltip } from '../ui';
+import { toast, useDraft } from '../../store/draft';
+import { StatusPicker } from '../task/StatusPicker';
+import {
+  Avatar,
+  Button,
+  Chip,
+  cx,
+  Empty,
+  IconButton,
+  Popover,
+  STATUS_ICON,
+  StatusBadge,
+  Tooltip,
+} from '../ui';
 
 const ROW = 40;
 const HEADER = 56;
@@ -27,18 +62,31 @@ const MIN_DAY_W = 8;
 const BAR_H = 18;
 const CARD_W = 264;
 
-// Полосы: выполненные уходят на второй план, в работе — акцент, сдвинутые черновиком — оранжевые.
+// Полосы по статусу: не начата — контур, в работе — акцент, блок — штриховка, готово — зелёная.
+// Сдвинутые черновиком — оранжевые, но иконка статуса внутри остаётся.
 const FILL = {
-  done: '#cfe6d9',
+  done: 'var(--color-done-bar)',
   in_progress: 'var(--color-cobalt)',
+  blocked: 'url(#blocked-hatch)',
+  not_started: 'var(--color-surface)',
+} as const;
+const STROKE = {
+  done: 'var(--color-moss)',
+  in_progress: 'var(--color-cobalt-deep)',
   blocked: 'var(--color-ochre-bar)',
-  not_started: 'var(--color-bar-idle)',
+  not_started: 'var(--color-line-strong)',
 } as const;
 const LABEL = {
-  done: 'var(--color-moss)',
-  in_progress: '#fff',
+  done: 'var(--color-ink)',
+  in_progress: 'var(--color-surface)',
   blocked: 'var(--color-ink)',
   not_started: 'var(--color-ink-2)',
+} as const;
+const ICON_ON_BAR = {
+  done: 'var(--color-moss)',
+  in_progress: 'var(--color-surface)',
+  blocked: 'var(--color-ochre)',
+  not_started: 'var(--color-ink-3)',
 } as const;
 
 const EDGE = {
@@ -49,6 +97,12 @@ const EDGE = {
 } as const;
 
 const WEEKEND = 'rgb(21 24 30 / 0.025)';
+
+const HINT_KEY = 'volna:timeline-hint-hidden';
+
+type Drag =
+  | { kind: 'resize'; id: string; dur: number; from: number }
+  | { kind: 'link'; id: string; x: number; y: number; target: string | null };
 
 const isMonday = (d: ISODate) => new Date(parseDate(d)).getUTCDay() === 1;
 const minDate = (xs: ISODate[]) => xs.reduce((m, x) => (x < m ? x : m));
@@ -65,7 +119,13 @@ export function GanttView() {
   const [zoom, setZoom] = useState<number | null>(null);
   const [viewport, setViewport] = useState({ width: 0, scrollLeft: 0 });
   const [hoverId, setHoverId] = useState<string | null>(null);
+  // Подсветка задач одного статуса по клику на сводку над таймлайном.
+  const [statusFocus, setStatusFocus] = useState<TaskStatus | null>(null);
+  const [depId, setDepId] = useState<string | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const propose = usePropose();
 
   const byId = useMemo(() => new Map(state.tasks.map((t) => [t.id, t])), [state.tasks]);
   const peopleById = useMemo(() => new Map(state.people.map((p) => [p.id, p])), [state.people]);
@@ -135,7 +195,132 @@ export function GanttView() {
     };
   }, [hasTasks]);
 
+  // Перетаскивание: слушатели на окне живут, пока идёт жест; свежие размеры берутся из ref.
+  const dragRef = useRef<Drag | null>(null);
+  dragRef.current = drag;
+  const lastDragEnd = useRef(0);
+  const live = useRef({
+    toDur: (_px: number, _id: string): number => 0,
+    rowAt: (_py: number): string | null => null,
+    commit: (_d: Drag) => {},
+  });
+  live.current = {
+    toDur: (px, id) => {
+      const date = addCalendarDays(range.start, Math.floor(px / dayW));
+      const es = a.tasks[id].es;
+      // Задача в работе не может закончиться раньше завтра — как в движке (EF ≥ сегодня + 1).
+      const min = byId.get(id)?.status === 'in_progress' ? startIndex(a.today) + 1 - es : 1;
+      return Math.max(1, min, endIndex(date) - es);
+    },
+    rowAt: (py) => {
+      const r = Math.floor(py / ROW);
+      return r >= 0 && r < order.length ? order[r]! : null;
+    },
+    commit: (d) => {
+      if (d.kind === 'resize') {
+        if (d.dur !== d.from) {
+          propose({ type: 'updateTask', taskId: d.id, patch: { durationDays: d.dur } });
+        }
+      } else if (d.target) {
+        propose({
+          type: 'addDependency',
+          dependency: {
+            id: newId(),
+            projectId: state.project.id,
+            predecessorId: d.id,
+            successorId: d.target,
+            lagDays: 0,
+          },
+        });
+      }
+    },
+  };
+  const dragging = drag ? `${drag.kind}:${drag.id}` : null;
+  useEffect(() => {
+    if (!dragging) return;
+    const point = (e: PointerEvent) => {
+      const r = svgRef.current?.getBoundingClientRect();
+      return { px: e.clientX - (r?.left ?? 0), py: e.clientY - (r?.top ?? 0) };
+    };
+    const move = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const { px, py } = point(e);
+      if (d.kind === 'resize') {
+        const dur = live.current.toDur(px, d.id);
+        if (dur !== d.dur) setDrag({ ...d, dur });
+      } else {
+        const target = live.current.rowAt(py);
+        setDrag({ ...d, x: px, y: py, target: target === d.id ? null : target });
+      }
+    };
+    const up = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      lastDragEnd.current = Date.now();
+      if (d) live.current.commit(d);
+    };
+    const cancel = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      dragRef.current = null;
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    window.addEventListener('keydown', cancel);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      window.removeEventListener('keydown', cancel);
+    };
+  }, [dragging]);
+
+  // Выбранная связь снимается по Esc.
+  useEffect(() => {
+    if (!depId) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDepId(null);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [depId]);
+
   if (order.length === 0) return <EmptyTimeline />;
+
+  const startResize = (e: ReactPointerEvent, id: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const dur = byId.get(id)!.durationDays;
+    setDepId(null);
+    setDrag({ kind: 'resize', id, dur, from: dur });
+  };
+  const startLink = (e: ReactPointerEvent, id: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const g = barGeom(id);
+    const x0 = g.x2 + (g.milestone ? 20 : 11);
+    setDepId(null);
+    setDrag({ kind: 'link', id, x: x0, y: g.y + BAR_H / 2, target: null });
+  };
+  const removeDep = (id: string) => {
+    const before = useDraft.getState().ops;
+    if (propose({ type: 'removeDependency', dependencyId: id })) {
+      toast('Связь убрана', 'info', {
+        action: { label: 'Отменить', onClick: () => useDraft.getState().setOps(before) },
+      });
+    }
+    setDepId(null);
+  };
+  const selectBar = (id: string) => {
+    if (Date.now() - lastDragEnd.current > 250) select(id);
+  };
+  const isDimmed = (id: string) =>
+    linked !== null
+      ? !linked.ids.has(id)
+      : statusFocus !== null && byId.get(id)?.status !== statusFocus;
 
   const days = Array.from({ length: range.days }, (_, i) => addCalendarDays(range.start, i));
   const barGeom = (id: string, source: 'after' | 'before' = 'after') => {
@@ -158,6 +343,13 @@ export function GanttView() {
       className="relative bg-surface"
       style={{ width: LEFT + width, minHeight: '100%' }}
     >
+      <TimelineToolbar
+        tasks={state.tasks}
+        focus={statusFocus}
+        onFocus={setStatusFocus}
+        width={viewport.width}
+        roomy={roomy}
+      />
       {/* Шапка: месяцы, дни, отдельная дорожка для меток «сегодня» и «дедлайн» — они не перекрывают даты */}
       <div className="sticky top-0 z-20 flex">
         <div
@@ -233,7 +425,10 @@ export function GanttView() {
                       stroke="var(--color-line)"
                     />
                   )}
-                  {(dayW >= 18 || isMonday(d) || today) && (
+                  {(dayW >= 18 ||
+                    today ||
+                    // Понедельник рядом с «сегодня» не подписываем — цифры слиплись бы.
+                    (isMonday(d) && Math.abs(i - todayIdx) * dayW >= 22)) && (
                     <text
                       x={i * dayW + dayW / 2}
                       y={32}
@@ -283,6 +478,8 @@ export function GanttView() {
                 selected={selectedId === id}
                 shifted={affected.has(id)}
                 linked={linked !== null && linked.ids.has(id) && id !== hovered}
+                dimmed={statusFocus !== null && t.status !== statusFocus}
+                linkTarget={drag?.kind === 'link' && drag.target === id}
                 flashKey={flash.ids.has(id) ? flash.stamp : 0}
                 roomy={roomy}
                 onSelect={select}
@@ -293,7 +490,21 @@ export function GanttView() {
         </div>
 
         {/* Поле диаграммы */}
-        <svg width={width} height={height} className="block" onMouseLeave={() => setHoverId(null)}>
+        <svg
+          ref={svgRef}
+          width={width}
+          height={height}
+          className={cx('block touch-pan-y', drag && 'select-none')}
+          style={{
+            cursor: drag ? (drag.kind === 'resize' ? 'ew-resize' : 'crosshair') : undefined,
+          }}
+          onMouseLeave={() => !drag && setHoverId(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget || (e.target as Element).hasAttribute('data-bg')) {
+              setDepId(null);
+            }
+          }}
+        >
           <defs>
             {Object.values(EDGE).map((e) => (
               <marker
@@ -318,6 +529,16 @@ export function GanttView() {
             >
               <line x1="0" y1="0" x2="0" y2="6" stroke="var(--color-idle)" strokeWidth="1.5" />
             </pattern>
+            <pattern
+              id="blocked-hatch"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="6" height="6" fill="var(--color-ochre-soft)" />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="var(--color-ochre-bar)" strokeWidth="2.5" />
+            </pattern>
           </defs>
 
           {days.map((d, i) =>
@@ -326,15 +547,29 @@ export function GanttView() {
             ) : null,
           )}
           {order.map((id, i) => {
-            const fill =
-              selectedId === id
+            const target = drag?.kind === 'link' && drag.target === id;
+            const fill = target
+              ? 'var(--color-cobalt-soft)'
+              : selectedId === id
                 ? 'var(--color-cobalt-soft)'
                 : hovered === id || linked?.ids.has(id)
                   ? 'var(--color-sunken)'
                   : null;
             return (
               <g key={id}>
-                {fill && <rect x={0} y={i * ROW} width={width} height={ROW} fill={fill} />}
+                {fill && <rect data-bg x={0} y={i * ROW} width={width} height={ROW} fill={fill} />}
+                {target && (
+                  <rect
+                    x={1}
+                    y={i * ROW + 1}
+                    width={width - 2}
+                    height={ROW - 2}
+                    fill="none"
+                    stroke="var(--color-cobalt)"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                  />
+                )}
                 <line
                   x1={0}
                   x2={width}
@@ -398,8 +633,16 @@ export function GanttView() {
                   dep={d}
                   p={barGeom(d.predecessorId)}
                   s={barGeom(d.successorId)}
-                  edge={edgeOf(d)}
-                  dimmed={linked !== null && !linked.deps.has(d.id)}
+                  edge={depId === d.id ? EDGE.linked : edgeOf(d)}
+                  dimmed={
+                    depId !== null
+                      ? depId !== d.id
+                      : linked !== null
+                        ? !linked.deps.has(d.id)
+                        : statusFocus !== null
+                  }
+                  selected={depId === d.id}
+                  onSelect={setDepId}
                 />
               );
             })}
@@ -448,6 +691,8 @@ export function GanttView() {
           {order.map((id) => {
             const t = byId.get(id)!;
             const g = barGeom(id);
+            const active = !drag && (hovered === id || selectedId === id);
+            const showDue = t.dueDate && t.status !== 'done' && (active || g.s.flags.missesDueDate);
             return (
               <TaskBar
                 key={id}
@@ -459,20 +704,113 @@ export function GanttView() {
                 x2={g.x2}
                 milestone={g.milestone}
                 floatEndX={x(indexToDate(g.s.lf - 1)) + dayW}
-                dueX={t.dueDate ? x(t.dueDate) + dayW : null}
+                dueX={showDue ? x(t.dueDate!) + dayW : null}
                 todayX={todayX}
                 selected={selectedId === id}
-                dimmed={linked !== null && !linked.ids.has(id)}
-                onSelect={select}
+                active={active}
+                dimmed={isDimmed(id)}
+                editable={roomy}
+                onSelect={selectBar}
                 onHover={setHoverId}
+                onResizeStart={startResize}
+                onLinkStart={startLink}
               />
             );
           })}
+
+          {/* Превью жеста: новая длительность или протягиваемая связь */}
+          {drag?.kind === 'resize' &&
+            (() => {
+              const g = barGeom(drag.id);
+              const s = a.tasks[drag.id];
+              const endX = x(indexToDate(s.es + drag.dur - 1)) + dayW;
+              const from = byId.get(drag.id)!.durationDays;
+              const label = `${from} → ${drag.dur} раб. дн.`;
+              const lw = label.length * 6.4 + 14;
+              return (
+                <g pointerEvents="none">
+                  <rect
+                    x={g.x1}
+                    y={g.y - 2}
+                    width={Math.max(4, endX - g.x1)}
+                    height={BAR_H + 4}
+                    rx={5}
+                    fill="var(--color-cobalt)"
+                    fillOpacity={0.12}
+                    stroke="var(--color-cobalt)"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                  />
+                  <g transform={`translate(${endX + 8}, ${g.y - 1})`}>
+                    <rect width={lw} height={BAR_H + 2} rx={5} fill="var(--color-ink)" />
+                    <text
+                      x={lw / 2}
+                      y={14}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fontWeight={600}
+                      fill="var(--color-surface)"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                </g>
+              );
+            })()}
+          {drag?.kind === 'link' &&
+            (() => {
+              const g = barGeom(drag.id);
+              const x0 = g.x2 + (g.milestone ? 20 : 11);
+              const y0 = g.y + BAR_H / 2;
+              return (
+                <g pointerEvents="none">
+                  <line
+                    x1={x0}
+                    y1={y0}
+                    x2={drag.x}
+                    y2={drag.y}
+                    stroke="var(--color-cobalt)"
+                    strokeWidth={2}
+                    strokeDasharray="5 4"
+                  />
+                  <circle cx={x0} cy={y0} r={5} fill="var(--color-cobalt)" />
+                  <circle cx={drag.x} cy={drag.y} r={4} fill="var(--color-cobalt)" />
+                </g>
+              );
+            })()}
         </svg>
       </div>
 
       {/* На узком (обычно сенсорном) экране карточка перекрывала бы поповеры — там хватает шторки. */}
-      {hovered && roomy && (
+      {depId &&
+        (() => {
+          const d = state.dependencies.find((x) => x.id === depId);
+          if (!d) return null;
+          return (
+            <div
+              role="region"
+              aria-label="Выбранная связь"
+              className="animate-toast-in fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-lg bg-ink py-2 pr-2 pl-4 text-sm text-white shadow-float"
+            >
+              <span className="truncate">
+                «{byId.get(d.predecessorId)?.name}» → «{byId.get(d.successorId)?.name}»
+              </span>
+              <Button size="sm" variant="danger-solid" onClick={() => removeDep(d.id)}>
+                <Trash2 size={13} /> Убрать связь
+              </Button>
+              <button
+                type="button"
+                aria-label="Снять выделение связи"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-white/80 hover:bg-white/10 hover:text-white active:bg-white/15 outline-none focus-visible:ring-2 focus-visible:ring-cobalt"
+                onClick={() => setDepId(null)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+          );
+        })()}
+
+      {hovered && roomy && !drag && (
         <HoverCard
           id={hovered}
           geom={barGeom(hovered)}
@@ -554,12 +892,16 @@ const DependencyPath = memo(function DependencyPath({
   s,
   edge,
   dimmed,
+  selected,
+  onSelect,
 }: {
   dep: Dependency;
   p: { y: number; x2: number; milestone: boolean };
   s: { y: number; x1: number; milestone: boolean };
   edge: (typeof EDGE)[keyof typeof EDGE];
   dimmed: boolean;
+  selected: boolean;
+  onSelect: (id: string) => void;
 }) {
   const x1 = p.milestone ? p.x2 + 7 : p.x2;
   const y1 = p.y + BAR_H / 2;
@@ -571,16 +913,32 @@ const DependencyPath = memo(function DependencyPath({
       ? `M${x1},${y1} H${x1 + 7} V${y2} H${x2 - 1}`
       : `M${x1},${y1} H${x1 + 7} V${rowBoundary} H${x2 - 9} V${y2} H${x2 - 1}`;
   return (
-    <path
-      data-dep={dep.id}
-      d={path}
-      fill="none"
-      stroke={edge.color}
-      strokeWidth={edge === EDGE.plain ? 1.25 : 1.75}
-      strokeLinejoin="round"
-      markerEnd={`url(#${edge.marker})`}
-      style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 150ms ease-out' }}
-    />
+    <g>
+      <path
+        data-dep={dep.id}
+        d={path}
+        fill="none"
+        stroke={edge.color}
+        strokeWidth={selected ? 2.5 : edge === EDGE.plain ? 1.25 : 1.75}
+        strokeLinejoin="round"
+        markerEnd={`url(#${edge.marker})`}
+        style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 150ms ease-out' }}
+      />
+      {/* Широкая невидимая линия: по тонкой стрелке легко попасть мышью */}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={10}
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(dep.id);
+        }}
+      >
+        <title>Нажмите, чтобы выбрать связь</title>
+      </path>
+    </g>
   );
 });
 
@@ -592,6 +950,8 @@ const TaskRow = memo(function TaskRow({
   selected,
   shifted,
   linked,
+  dimmed,
+  linkTarget,
   flashKey,
   roomy,
   onSelect,
@@ -603,6 +963,8 @@ const TaskRow = memo(function TaskRow({
   selected: boolean;
   shifted: boolean;
   linked: boolean;
+  dimmed: boolean;
+  linkTarget: boolean;
   flashKey: number;
   roomy: boolean;
   onSelect: (id: string) => void;
@@ -611,14 +973,15 @@ const TaskRow = memo(function TaskRow({
   return (
     <div
       className={cx(
-        'relative flex items-center border-b border-line-soft transition-colors duration-150',
-        selected
+        'relative flex items-center border-b border-line-soft transition-[background-color,opacity] duration-150',
+        selected || linkTarget
           ? 'bg-cobalt-soft'
           : linked
             ? 'bg-sunken'
             : shifted
               ? 'bg-wave-soft'
               : 'hover:bg-sunken',
+        dimmed && 'opacity-45',
       )}
       style={{ height: ROW }}
       onMouseEnter={() => onHover(t.id)}
@@ -627,44 +990,42 @@ const TaskRow = memo(function TaskRow({
       {flashKey > 0 && (
         <span key={flashKey} aria-hidden className="recalc-flash absolute inset-0 bg-wave/15" />
       )}
+      <span className="relative flex shrink-0 pl-2.5">
+        <StatusPicker task={t} size="sm" iconOnly />
+      </span>
       <button
         type="button"
         onClick={() => onSelect(t.id)}
         onFocus={() => onHover(t.id)}
         onBlur={() => onHover(null)}
         aria-pressed={selected}
-        className="relative flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-4 text-left text-sm focus-visible:outline-offset-[-2px]"
+        className="relative flex h-full min-w-0 flex-1 items-center pr-1 pl-2 text-left text-sm focus-visible:outline-offset-[-2px]"
       >
-        <StatusDot status={t.status} />
         <span
-          className={cx('min-w-0 flex-1 truncate', t.status === 'done' ? 'text-ink-3' : 'text-ink')}
+          className={cx(
+            'min-w-0 flex-1 truncate',
+            t.status === 'done' ? 'text-ink-3 line-through decoration-ink-3/40' : 'text-ink',
+          )}
           title={`${t.name}: ${STATUS_LABEL[t.status]}`}
         >
           {t.name}
         </span>
       </button>
       <span className="relative flex shrink-0 items-center gap-1 pr-2">
-        {s.flags.critical && (
-          <Tooltip content={GLOSSARY.critical}>
-            <span className="flex">
-              <Flame size={14} className="text-crimson" aria-label="На критическом пути" />
-            </span>
-          </Tooltip>
-        )}
-        {roomy && s.risk === 'high' && (
+        {/* Один значок риска на строку: угроза важнее перегрузки; критичность видна по красной рамке полосы */}
+        {s.risk === 'high' ? (
           <Tooltip content={GLOSSARY.threatened}>
             <span className="flex">
               <AlertTriangle size={14} className="text-crimson" aria-label="Под угрозой" />
             </span>
           </Tooltip>
-        )}
-        {roomy && s.flags.overloaded && (
+        ) : roomy && s.flags.overloaded ? (
           <Tooltip content={GLOSSARY.overloaded}>
             <span className="flex">
               <Users size={14} className="text-wave-deep" aria-label="Исполнитель перегружен" />
             </span>
           </Tooltip>
-        )}
+        ) : null}
         <DurationButton task={t} align={roomy ? 'end' : 'start'} />
         {roomy && <Avatar person={person ?? null} size={20} />}
       </span>
@@ -747,9 +1108,13 @@ const TaskBar = memo(function TaskBar({
   dueX,
   todayX,
   selected,
+  active,
   dimmed,
+  editable,
   onSelect,
   onHover,
+  onResizeStart,
+  onLinkStart,
 }: {
   task: Task;
   sched: TaskSchedule;
@@ -759,12 +1124,19 @@ const TaskBar = memo(function TaskBar({
   x2: number;
   milestone: boolean;
   floatEndX: number;
+  /** Метка срока «сдать до» (дата — в карточке): у задачи под курсором, выбранной или не успевающей к сроку. */
   dueX: number | null;
   todayX: number;
   selected: boolean;
+  /** Под курсором или выбрана: видны ручки длительности и связи. */
+  active: boolean;
   dimmed: boolean;
+  /** Можно тянуть мышью (не на телефоне). */
+  editable: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+  onResizeStart: (e: ReactPointerEvent, id: string) => void;
+  onLinkStart: (e: ReactPointerEvent, id: string) => void;
 }) {
   const shifted = imp && (imp.deltaEnd !== 0 || imp.deltaStart !== 0 || imp.created);
   const delay = imp ? (imp.chain.length - 1) * 60 : 0;
@@ -777,19 +1149,22 @@ const TaskBar = memo(function TaskBar({
       ? 'var(--color-crimson)'
       : shifted
         ? 'var(--color-wave-deep)'
-        : t.status === 'not_started'
-          ? 'var(--color-idle)'
-          : t.status === 'done'
-            ? '#9fcdb4'
-            : fill;
+        : STROKE[t.status];
   const w = Math.max(4, x2 - x1);
   const cy = y + BAR_H / 2;
+  // Статус остаётся виден и у сдвинутой полосы: иконка внутри.
+  const Icon = STATUS_ICON[t.status];
+  const showIcon = !milestone && w >= 22;
+  const canResize = editable && !milestone && t.status !== 'done';
+  const linkX = x2 + (milestone ? 20 : 11);
+  const showLink = editable && active;
+  const missed = s.flags.missesDueDate;
 
   return (
     <g
       style={{
         cursor: 'pointer',
-        opacity: dimmed ? 0.45 : 1,
+        opacity: dimmed ? 0.35 : 1,
         transition: 'opacity 150ms ease-out',
       }}
       onClick={() => onSelect(t.id)}
@@ -800,11 +1175,11 @@ const TaskBar = memo(function TaskBar({
         className={shifted ? 'wave-in' : undefined}
         style={{ animationDelay: `${delay}ms` }}
       >
-        {/* Невидимая зона наведения: карточка не мерцает между полосой и резервом */}
+        {/* Невидимая зона наведения: карточка не мерцает между полосой, резервом и ручками */}
         <rect
           x={Math.min(x1, x2) - 10}
           y={y - 8}
-          width={w + 20}
+          width={w + 34}
           height={BAR_H + 16}
           fill="transparent"
         />
@@ -818,7 +1193,13 @@ const TaskBar = memo(function TaskBar({
           <path
             d={`M${x2},${cy - 9} l9,9 l-9,9 l-9,-9 z`}
             fill={
-              shifted ? 'var(--color-wave)' : crit ? 'var(--color-crimson)' : 'var(--color-ink)'
+              shifted
+                ? 'var(--color-wave)'
+                : t.status === 'done'
+                  ? 'var(--color-moss)'
+                  : crit
+                    ? 'var(--color-crimson)'
+                    : 'var(--color-ink)'
             }
             stroke={
               selected ? 'var(--color-ink)' : crit && shifted ? 'var(--color-crimson)' : 'none'
@@ -835,7 +1216,7 @@ const TaskBar = memo(function TaskBar({
               rx={4}
               fill={fill}
               stroke={stroke}
-              strokeWidth={crit || selected ? 2 : 1}
+              strokeWidth={crit || selected ? 2 : 1.25}
             />
             {t.status === 'in_progress' && !shifted && todayX > x1 && (
               <rect
@@ -848,9 +1229,19 @@ const TaskBar = memo(function TaskBar({
                 opacity={0.55}
               />
             )}
-            {w >= 44 && (
+            {showIcon && (
+              <Icon
+                x={x1 + 4}
+                y={cy - 6}
+                size={12}
+                strokeWidth={2.6}
+                color={shifted ? 'var(--color-ink)' : ICON_ON_BAR[t.status]}
+                aria-hidden
+              />
+            )}
+            {w >= 52 && (
               <text
-                x={x1 + 7}
+                x={x1 + (showIcon ? 20 : 7)}
                 y={cy + 4}
                 fontSize={11}
                 fontWeight={600}
@@ -862,23 +1253,22 @@ const TaskBar = memo(function TaskBar({
           </>
         )}
         {dueX !== null && (
-          <g>
+          <g pointerEvents="none">
             <line
               x1={dueX}
               x2={dueX}
-              y1={y - 5}
-              y2={y + BAR_H + 5}
-              stroke={s.flags.missesDueDate ? 'var(--color-crimson)' : 'var(--color-ink-2)'}
+              y1={y - 4}
+              y2={y + BAR_H + 4}
+              stroke={missed ? 'var(--color-crimson)' : 'var(--color-ink-2)'}
               strokeWidth={1.5}
-            />
-            <path
-              d={`M${dueX},${y - 5} l7,3 l-7,3 z`}
-              fill={s.flags.missesDueDate ? 'var(--color-crimson)' : 'var(--color-ink-2)'}
+              strokeDasharray={missed ? undefined : '3 2'}
             />
           </g>
         )}
         {imp && imp.deltaEnd !== 0 && (
-          <g transform={`translate(${Math.max(x2, dueX ?? 0) + (milestone ? 14 : 8)}, ${y})`}>
+          <g
+            transform={`translate(${Math.max(x2, dueX ?? 0) + (milestone ? 14 : 8) + (showLink ? 20 : 0)}, ${y})`}
+          >
             <rect
               width={imp.deltaEnd > 0 ? 50 : 46}
               height={BAR_H}
@@ -900,6 +1290,45 @@ const TaskBar = memo(function TaskBar({
           </g>
         )}
       </g>
+      {/* Ручки: правый край — длительность, точка справа — новая связь */}
+      {canResize && (
+        <g style={{ cursor: 'ew-resize' }} onPointerDown={(e) => onResizeStart(e, t.id)}>
+          <rect x={x2 - 6} y={y - 3} width={11} height={BAR_H + 6} fill="transparent" />
+          {active && (
+            <rect
+              x={x2 - 4}
+              y={y + 4}
+              width={2.5}
+              height={BAR_H - 8}
+              rx={1.25}
+              fill={
+                t.status === 'in_progress' || shifted
+                  ? 'var(--color-surface)'
+                  : 'var(--color-ink-2)'
+              }
+            />
+          )}
+          <title>Потяните, чтобы изменить длительность</title>
+        </g>
+      )}
+      {showLink && (
+        <g
+          style={{ cursor: 'crosshair' }}
+          onPointerDown={(e) => onLinkStart(e, t.id)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <circle cx={linkX} cy={cy} r={10} fill="transparent" />
+          <circle
+            cx={linkX}
+            cy={cy}
+            r={5}
+            fill="var(--color-surface)"
+            stroke="var(--color-cobalt)"
+            strokeWidth={2}
+          />
+          <title>Потяните к другой задаче, чтобы связать</title>
+        </g>
+      )}
     </g>
   );
 });
@@ -942,21 +1371,16 @@ function HoverCard({
         className="animate-pop-in rounded-xl border border-line bg-surface p-3 shadow-float"
       >
         <div className="flex items-start gap-2">
-          <span className="mt-1.5">
-            <StatusDot status={t.status} />
-          </span>
           <p className="min-w-0 flex-1 text-sm leading-5 font-semibold">{t.name}</p>
+          <StatusBadge status={t.status} size="sm" />
         </div>
         <div className="mt-2 flex items-center gap-2 text-[13px] text-ink-2">
           <Avatar person={person} size={18} />
           <span className="truncate">{person?.name ?? 'Не назначен'}</span>
-          <span className="ml-auto shrink-0 text-ink-3">{STATUS_LABEL[t.status]}</span>
         </div>
         <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-line-soft pt-2.5 text-[13px]">
-          <dt className="text-ink-3">Сроки</dt>
-          <dd className="text-right font-medium">
-            {fmtDate(s.startDate)} — {fmtDate(s.endDate)}
-          </dd>
+          <dt className="text-ink-3">Даты</dt>
+          <dd className="text-right font-medium">{fmtRange(s.startDate, s.endDate)}</dd>
           <dt className="text-ink-3">Длительность</dt>
           <dd className="text-right font-medium">
             {t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}
@@ -977,7 +1401,7 @@ function HoverCard({
           )}
           {t.dueDate && (
             <>
-              <dt className="text-ink-3">Срок задачи</dt>
+              <dt className="text-ink-3">Сдать до</dt>
               <dd className={cx('text-right font-medium', s.flags.missesDueDate && 'text-crimson')}>
                 {fmtDate(t.dueDate)}
               </dd>
@@ -997,43 +1421,183 @@ function HoverCard({
   );
 }
 
+/** Образец полосы для легенды — те же цвета, что и на таймлайне. */
+function BarSwatch({ status }: { status: TaskStatus }) {
+  const Icon = STATUS_ICON[status];
+  return (
+    <span
+      className="inline-flex h-3.5 w-7 shrink-0 items-center rounded-[4px] pl-0.5"
+      style={{
+        background:
+          status === 'blocked'
+            ? 'repeating-linear-gradient(45deg, var(--color-ochre-soft) 0 3px, var(--color-ochre-bar) 3px 5px)'
+            : FILL[status],
+        border: `1.25px solid ${STROKE[status]}`,
+      }}
+    >
+      <Icon size={10} strokeWidth={2.8} color={ICON_ON_BAR[status]} aria-hidden />
+    </span>
+  );
+}
+
+const LEGEND_MARKS: { swatch: ReactNode; label: string }[] = [
+  {
+    swatch: (
+      <span className="inline-block h-3.5 w-7 rounded-[4px] border-2 border-crimson bg-surface" />
+    ),
+    label: 'Критический путь',
+  },
+  {
+    swatch: <span className="inline-block h-3.5 w-7 rounded-[4px] bg-wave" />,
+    label: 'Сдвиг из черновика',
+  },
+];
+
+// В развёрнутой легенде — ещё и то, что видно реже.
+const LEGEND_MORE: { swatch: ReactNode; label: string }[] = [
+  {
+    swatch: <span className="inline-block h-3.5 border-l-2 border-dashed border-ink-2" />,
+    label: 'Сдать до: срок задачи',
+  },
+  {
+    swatch: (
+      <span className="inline-block h-3.5 w-7 rounded-[4px] border border-dashed border-idle" />
+    ),
+    label: 'Прежние даты до изменения',
+  },
+  {
+    swatch: <span className="inline-block w-7 border-t-2 border-dotted border-idle" />,
+    label: 'Резерв: насколько можно сдвинуть',
+  },
+];
+
+/**
+ * Сводка статусов над таймлайном: сколько задач в каждом статусе; клик подсвечивает их.
+ * Справа — обозначения (на широком экране всегда видны) и подсказка про перетаскивание.
+ */
+function TimelineToolbar({
+  tasks,
+  focus,
+  onFocus,
+  width,
+  roomy,
+}: {
+  tasks: Task[];
+  focus: TaskStatus | null;
+  onFocus: (s: TaskStatus | null) => void;
+  width: number;
+  roomy: boolean;
+}) {
+  const wide = useMediaQuery('(min-width: 1536px)');
+  const [hintHidden, setHintHidden] = useState(() => {
+    try {
+      return localStorage.getItem(HINT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const hideHint = () => {
+    setHintHidden(true);
+    try {
+      localStorage.setItem(HINT_KEY, '1');
+    } catch {
+      // Хранилище недоступно — подсказка вернётся при следующем открытии.
+    }
+  };
+  const counts = Object.fromEntries(
+    TASK_STATUSES.map((st) => [st, tasks.filter((t) => t.status === st).length]),
+  ) as Record<TaskStatus, number>;
+  const order: TaskStatus[] = ['in_progress', 'blocked', 'not_started', 'done'];
+  return (
+    <div
+      className="sticky left-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface px-3 py-2"
+      style={{ width: width || '100%' }}
+    >
+      <div
+        role="group"
+        aria-label="Задачи по статусам"
+        className="flex flex-wrap items-center gap-1.5"
+      >
+        {order.map((st) => {
+          const on = focus === st;
+          return (
+            <button
+              key={st}
+              type="button"
+              aria-pressed={on}
+              disabled={counts[st] === 0}
+              onClick={() => onFocus(on ? null : st)}
+              title={on ? 'Показать все задачи' : `Выделить: ${STATUS_LABEL[st].toLowerCase()}`}
+              className={cx(
+                'rounded-full outline-none transition-[box-shadow,opacity] duration-150 hover:brightness-[0.97] focus-visible:ring-2 focus-visible:ring-cobalt disabled:cursor-not-allowed disabled:opacity-45',
+                on && 'ring-2 ring-cobalt',
+                focus !== null && !on && 'opacity-60 hover:opacity-100',
+              )}
+            >
+              <StatusBadge status={st} size="sm" count={counts[st]} />
+            </button>
+          );
+        })}
+        {focus && (
+          <button
+            type="button"
+            onClick={() => onFocus(null)}
+            className="ml-1 inline-flex h-[22px] items-center gap-1 rounded-full px-2 text-[12px] text-ink-2 hover:bg-sunken"
+          >
+            <X size={12} /> Все
+          </button>
+        )}
+      </div>
+      {wide && (
+        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-2">
+          {LEGEND_MARKS.map((m) => (
+            <li key={m.label} className="flex items-center gap-1.5">
+              {m.swatch}
+              {m.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      {roomy && !hintHidden && (
+        <p className="ml-auto flex items-center gap-1 text-[12px] text-ink-3">
+          <MousePointer2 size={13} className="shrink-0" />
+          Край полосы — длительность, точка справа — связь
+          <IconButton label="Скрыть подсказку" className="h-6 w-6" onClick={hideHint}>
+            <X size={12} />
+          </IconButton>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Legend() {
   const item = (swatch: ReactNode, label: ReactNode) => (
-    <li className="flex items-center gap-2.5">
-      <span className="flex w-6 shrink-0 justify-center">{swatch}</span>
+    <li key={String(label)} className="flex items-center gap-2.5">
+      <span className="flex w-7 shrink-0 justify-center">{swatch}</span>
       <span>{label}</span>
     </li>
-  );
-  const box = (bg: string, border?: string) => (
-    <span
-      className="inline-block h-3 w-6 rounded-[4px]"
-      style={{ background: bg, border: border ? `2px solid ${border}` : undefined }}
-    />
   );
   return (
     <>
       <p className="mb-2 text-sm font-semibold">Обозначения</p>
       <ul className="grid grid-cols-1 gap-1.5 text-[13px] text-ink-2">
-        {item(box(FILL.done, '#9fcdb4'), 'Выполнена')}
-        {item(box(FILL.in_progress), 'В работе')}
-        {item(box(FILL.not_started, 'var(--color-idle)'), 'Не начата')}
-        {item(box(FILL.blocked), 'Заблокирована')}
-        {item(box(FILL.not_started, 'var(--color-crimson)'), 'На критическом пути')}
-        {item(box('var(--color-wave)'), 'Сдвинута изменением из черновика')}
-        {item(box('transparent', 'var(--color-idle)'), 'Прежние даты до изменения')}
-        {item(
-          <span className="inline-block w-6 border-t-2 border-dotted border-idle" />,
-          'Резерв: насколько можно сдвинуть',
+        {(['not_started', 'in_progress', 'blocked', 'done'] as const).map((st) =>
+          item(<BarSwatch status={st} />, STATUS_LABEL[st]),
         )}
-        {item(<span className="inline-block h-3.5 w-0.5 bg-ink-2" />, 'Срок задачи')}
+        {[...LEGEND_MARKS, ...LEGEND_MORE].map((m) => item(m.swatch, m.label))}
         {item(<span className="inline-block h-3.5 w-0.5 bg-cobalt" />, 'Сегодня')}
         {item(
           <span className="inline-block h-3.5 border-l-2 border-dashed border-crimson" />,
           'Дедлайн проекта',
         )}
+        {item(<AlertTriangle size={14} className="text-crimson" />, 'Под угрозой: сорвёт срок')}
+        {item(<Users size={14} className="text-wave-deep" />, 'Исполнитель перегружен')}
       </ul>
       <p className="mt-2.5 border-t border-line-soft pt-2.5 text-[12px] leading-4 text-ink-3">
-        Наведите на задачу, чтобы выделить её связи. Число дней в строке меняет длительность.
+        Значок слева — статус, нажмите, чтобы сменить. Тяните правый край полосы, чтобы изменить
+        длительность, и точку справа от неё — чтобы связать с другой задачей. Нажмите на стрелку,
+        чтобы убрать связь.
       </p>
     </>
   );

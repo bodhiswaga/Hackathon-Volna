@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Check, ChevronDown, Lightbulb, Megaphone } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Lightbulb, Megaphone, X } from 'lucide-react';
 import { describeOps, type Health } from '@volna/engine';
 import {
   chanceText,
@@ -10,10 +10,10 @@ import {
   fmtShiftedTasks,
 } from '../../lib/format';
 import { GLOSSARY } from '../../lib/glossary';
-import { useModel } from '../../lib/model';
+import { useModel, useRemoveDraftOp } from '../../lib/model';
 import { useDraft } from '../../store/draft';
 import { BriefDialog } from '../brief/BriefDialog';
-import { Button, Chip, cx, SectionTitle, Term, Tooltip } from '../ui';
+import { Button, Chip, cx, IconButton, SectionTitle, Term, Tooltip } from '../ui';
 
 export const VERDICT: Record<Health, { title: string; color: string; bg: string }> = {
   ok: { title: 'Можно применять', color: 'var(--color-moss)', bg: 'var(--color-moss-soft)' },
@@ -38,10 +38,16 @@ export function ImpactPanel() {
   const select = useDraft((s) => s.select);
   const [showAll, setShowAll] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
+  const removeOp = useRemoveDraftOp();
   if (!impact) return null;
 
   const v = VERDICT[impact.verdict];
-  const lines = describeOps(base, ops);
+  // По строке на правку: у каждой свой крестик. Созданные в черновике задачи нужны для имён.
+  const named = {
+    ...base,
+    tasks: [...base.tasks, ...ops.flatMap((o) => (o.type === 'createTask' ? [o.task] : []))],
+  };
+  const lines = ops.map((op) => describeOps(named, [op]).join('; '));
   const waved = impact.affected.filter((x) => !x.direct && !x.created);
   const visible = showAll ? waved : waved.slice(0, WAVE_PREVIEW);
   const names = new Map(impact.affected.map((x) => [x.taskId, x.name]));
@@ -108,11 +114,21 @@ export function ImpactPanel() {
 
       <div className="mt-5">
         <SectionTitle>Изменения в черновике</SectionTitle>
-        <ul className="space-y-1 text-[13px]">
+        <ul className="-mx-2 space-y-0.5 text-[13px]">
           {lines.map((l, i) => (
-            <li key={i} className="flex gap-2">
+            <li
+              key={i}
+              className="group flex items-start gap-2 rounded-md py-1 pr-1 pl-2 transition-colors duration-150 hover:bg-sunken"
+            >
               <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-3" />
-              {l}
+              <span className="min-w-0 flex-1">{l}</span>
+              <IconButton
+                label="Убрать эту правку"
+                className="-my-1 h-7 w-7 opacity-60 group-hover:opacity-100 hover:bg-crimson-soft hover:text-crimson"
+                onClick={() => removeOp(i)}
+              >
+                <X size={14} />
+              </IconButton>
             </li>
           ))}
         </ul>

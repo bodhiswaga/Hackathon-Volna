@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { AlertTriangle, ChevronRight, CircleAlert, Radar, ShieldCheck } from 'lucide-react';
 import { useModel } from '../lib/model';
-import { fmtDate, fmtDays } from '../lib/format';
+import { fmtDays, fmtRange } from '../lib/format';
 import { GLOSSARY } from '../lib/glossary';
 import { useDraft } from '../store/draft';
-import { Term } from './ui';
+import { StatusIcon, Term } from './ui';
+
+// Остальные предупреждения — по кнопке «Ещё», чтобы панель не превращалась в стену текста.
+const ALERTS_SHOWN = 3;
 
 const rowClass =
   'flex w-full gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] leading-[18px] transition-colors duration-150 hover:bg-sunken active:bg-pressed';
@@ -14,6 +18,8 @@ export function AttentionPanel() {
   const setTab = useDraft((s) => s.setTab);
   const topThreat = threats[0];
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
+  const [allAlerts, setAllAlerts] = useState(false);
+  const alerts = allAlerts ? a.alerts : a.alerts.slice(0, ALERTS_SHOWN);
 
   return (
     <div className="p-5">
@@ -26,7 +32,7 @@ export function AttentionPanel() {
         </p>
       ) : (
         <ul className="-mx-2.5 mt-2">
-          {a.alerts.map((al) => (
+          {alerts.map((al) => (
             <li key={al.key}>
               <button
                 type="button"
@@ -42,6 +48,17 @@ export function AttentionPanel() {
               </button>
             </li>
           ))}
+          {a.alerts.length > ALERTS_SHOWN && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setAllAlerts((v) => !v)}
+                className="ml-2.5 rounded-md px-1 py-1 text-[13px] font-medium text-cobalt hover:underline outline-none focus-visible:ring-2 focus-visible:ring-cobalt"
+              >
+                {allAlerts ? 'Свернуть' : `Ещё ${a.alerts.length - ALERTS_SHOWN}`}
+              </button>
+            </li>
+          )}
         </ul>
       )}
 
@@ -70,9 +87,7 @@ export function AttentionPanel() {
           <h2 className="text-base font-semibold">
             <Term hint={GLOSSARY.critical}>Критический путь</Term>
           </h2>
-          <p className="mt-1 text-[13px] text-ink-2">
-            Задачи без резерва: задержка любой из них сдвигает финиш проекта.
-          </p>
+          <p className="mt-1 text-[13px] text-ink-2">Задержка любой из них сдвигает финиш.</p>
           <ol className="mt-3">
             {a.criticalPath.map((id, i) => {
               const t = byId.get(id)!;
@@ -80,9 +95,15 @@ export function AttentionPanel() {
               const last = i === a.criticalPath.length - 1;
               return (
                 <li key={id} className="relative flex gap-3">
-                  <span className="relative flex w-3 shrink-0 justify-center" aria-hidden>
-                    <span className="mt-[11px] h-2 w-2 rounded-full bg-crimson" />
-                    {!last && <span className="absolute top-6 bottom-0 w-px bg-crimson/30" />}
+                  <span className="relative flex w-4 shrink-0 justify-center">
+                    <StatusIcon
+                      status={t.status}
+                      size={15}
+                      className="relative z-[1] mt-2 bg-surface text-crimson"
+                    />
+                    {!last && (
+                      <span aria-hidden className="absolute top-6 bottom-0 w-px bg-crimson/30" />
+                    )}
                   </span>
                   <button
                     type="button"
@@ -91,7 +112,7 @@ export function AttentionPanel() {
                   >
                     <span className="block truncate text-[13px] font-medium">{t.name}</span>
                     <span className="block text-[12px] text-ink-3">
-                      {fmtDate(s.startDate)} — {fmtDate(s.endDate)},{' '}
+                      {fmtRange(s.startDate, s.endDate)},{' '}
                       {t.durationDays > 0 ? fmtDays(t.durationDays) : 'веха'}
                     </span>
                   </button>
@@ -101,10 +122,6 @@ export function AttentionPanel() {
           </ol>
         </div>
       )}
-      <p className="mt-6 border-t border-line-soft pt-4 text-[13px] leading-relaxed text-ink-3">
-        Выберите задачу, чтобы поменять срок, статус, ответственного или связи. Пока вы не нажали
-        «Применить», изменения остаются черновиком и план не меняется.
-      </p>
     </div>
   );
 }

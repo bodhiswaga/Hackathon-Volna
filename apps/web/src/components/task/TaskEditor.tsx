@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Minus, Plus, Trash2, X } from 'lucide-react';
-import { addWorkdays, statusPatch, TASK_STATUSES, type Task, type TaskPatch } from '@volna/engine';
-import { fmtDate, fmtDays, fmtWeekday, newId, STATUS_COLOR, STATUS_SHORT } from '../../lib/format';
+import { AlertTriangle, ChevronRight, Minus, Plus, Trash2, X } from 'lucide-react';
+import { type Task, type TaskPatch } from '@volna/engine';
+import { fmtDate, fmtDays, fmtDaysLong, fmtRange, newId } from '../../lib/format';
 import { GLOSSARY } from '../../lib/glossary';
 import { takeNameFocus, useModel, usePropose } from '../../lib/model';
 import { toast, useDraft } from '../../store/draft';
+import { TaskEventsMenu } from '../events/EventDialog';
 import {
   Button,
   Chip,
@@ -13,10 +14,11 @@ import {
   IconButton,
   inputClass,
   SectionTitle,
-  StatusDot,
+  StatusIcon,
   Term,
   Tooltip,
 } from '../ui';
+import { StatusPicker } from './StatusPicker';
 
 function DateInput({
   value,
@@ -68,16 +70,19 @@ export function TaskEditor({ task }: { task: Task }) {
   const { state, analysis } = useModel();
   const propose = usePropose();
   const select = useDraft((s) => s.select);
-  const [delayDate, setDelayDate] = useState(addWorkdays(analysis.today, 5));
   const [name, setName] = useState(task.name);
   const [nameError, setNameError] = useState<string | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLTextAreaElement>(null);
   // Только что созданная задача: название выделено, можно сразу печатать своё.
   useEffect(() => {
     if (takeNameFocus(task.id)) nameRef.current?.select();
   }, [task.id]);
+  // Название поменялось снаружи (Ctrl+Z, «Отменить» в тосте) — показываем актуальное,
+  // если человек сейчас не печатает в поле.
+  useEffect(() => {
+    if (document.activeElement !== nameRef.current) setName(task.name);
+  }, [task.name]);
   const setTab = useDraft((s) => s.setTab);
-  const openEvent = useDraft((s) => s.openEvent);
   const s = analysis.tasks[task.id];
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
   const patch = (p: TaskPatch) => propose({ type: 'updateTask', taskId: task.id, patch: p });
@@ -90,6 +95,12 @@ export function TaskEditor({ task }: { task: Task }) {
     ...succs.map((d) => d.successorId),
   ]);
   const candidates = state.tasks.filter((t) => !linked.has(t.id));
+  // Проблемы задачи одной строкой — теми же словами, что в «На что обратить внимание».
+  const alerts = analysis.alerts
+    .filter((x) => x.taskIds.includes(task.id))
+    .sort((x, y) => (x.severity === y.severity ? 0 : x.severity === 'high' ? -1 : 1));
+  // «Дополнительно» раскрыт сразу, если там уже что-то задано.
+  const hasExtra = Boolean(task.startNotEarlier || task.description);
 
   const addDep = (predecessorId: string, successorId: string) =>
     propose({
@@ -130,25 +141,26 @@ export function TaskEditor({ task }: { task: Task }) {
       case 'today':
         return 'может начаться не раньше сегодняшнего дня';
       case 'constraint':
-        return 'ограничение «не раньше»';
+        return `ограничение «начать не раньше ${fmtDate(task.startNotEarlier)}»`;
       case 'projectStart':
         return 'старт проекта';
       case 'actual':
-        return 'фактические даты';
+        return task.status === 'done'
+          ? `выполнена ${fmtDate(task.actualEnd)}, даты фактические`
+          : `в работе с ${fmtDate(task.actualStart)}`;
     }
   })();
 
   return (
     <section className="p-5">
       <div className="flex items-start gap-2">
-        <span className="mt-3">
-          <StatusDot status={task.status} size={10} />
-        </span>
         <div className="min-w-0 flex-1">
-          <input
+          {/* Многострочное: длинное название видно целиком и на телефоне. Enter — сохранить. */}
+          <textarea
             ref={nameRef}
+            rows={1}
             className={cx(
-              'w-full min-w-0 rounded-lg border px-2 py-1 text-[17px] leading-7 font-semibold outline-none transition-colors duration-150 hover:border-line focus:border-cobalt',
+              '-ml-2 block w-[calc(100%+8px)] min-w-0 resize-none rounded-lg border px-2 py-1 text-[17px] leading-7 font-semibold outline-none [field-sizing:content] transition-colors duration-150 hover:border-line focus:border-cobalt',
               nameError ? 'border-crimson' : 'border-transparent',
             )}
             value={name}
@@ -157,7 +169,12 @@ export function TaskEditor({ task }: { task: Task }) {
               if (nameError && e.target.value.trim()) setNameError(null);
             }}
             onBlur={commitName}
-            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
             aria-label="Название задачи"
             aria-invalid={nameError ? true : undefined}
             aria-describedby={nameError ? 'task-name-error' : undefined}
@@ -166,7 +183,7 @@ export function TaskEditor({ task }: { task: Task }) {
             <p
               id="task-name-error"
               role="alert"
-              className="animate-fade-in mt-1 px-2 text-[12px] text-crimson"
+              className="animate-fade-in mt-1 text-[12px] text-crimson"
             >
               {nameError}
             </p>
@@ -177,75 +194,56 @@ export function TaskEditor({ task }: { task: Task }) {
         </IconButton>
       </div>
 
-      {s && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5 pl-[18px]">
-          {s.flags.critical && (
-            <Tooltip content={GLOSSARY.critical}>
-              <span tabIndex={0} className="rounded-md">
-                <Chip tone="crimson">Критический путь</Chip>
-              </span>
-            </Tooltip>
-          )}
-          {s.flags.missesDueDate && <Chip tone="crimson">Не успевает к сроку</Chip>}
-          {s.flags.overdue && <Chip tone="crimson">Просрочена</Chip>}
-          {s.flags.pastDeadline && <Chip tone="crimson">За дедлайном</Chip>}
-          {s.flags.lowFloat && <Chip tone="wave">Мало резерва</Chip>}
-          {s.flags.overloaded && <Chip tone="wave">Исполнитель перегружен</Chip>}
-          {s.flags.blockedByPredecessor && <Chip tone="ochre">Предшественник не завершён</Chip>}
-        </div>
-      )}
-
-      <div
-        className="mt-4 grid grid-cols-4 gap-0.5 rounded-lg bg-sunken p-0.5"
-        role="radiogroup"
-        aria-label="Статус задачи"
-      >
-        {TASK_STATUSES.map((st) => (
-          <button
-            key={st}
-            type="button"
-            role="radio"
-            aria-checked={task.status === st}
-            onClick={() => patch(statusPatch(task, st, analysis))}
-            className={cx(
-              'flex h-8 items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition-colors duration-150',
-              task.status === st
-                ? 'bg-surface text-ink shadow-raised'
-                : 'text-ink-3 hover:bg-pressed/60 hover:text-ink active:bg-pressed',
-            )}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: STATUS_COLOR[st] }} />
-            {STATUS_SHORT[st]}
-          </button>
-        ))}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <StatusPicker task={task} />
+        {s?.flags.critical && (
+          <Tooltip content={GLOSSARY.critical}>
+            <span tabIndex={0} className="rounded-md">
+              <Chip tone="crimson">Критический путь</Chip>
+            </span>
+          </Tooltip>
+        )}
       </div>
 
       {s && (
-        <dl className="mt-4 grid grid-cols-3 gap-3 rounded-lg border border-line px-3.5 py-3 text-[13px]">
-          <div>
-            <dt className="text-ink-3">Начало</dt>
-            <dd className="font-medium">
-              {fmtDate(s.startDate)} <span className="text-ink-3">{fmtWeekday(s.startDate)}</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-ink-3">Окончание</dt>
-            <dd className="font-medium">
-              {fmtDate(s.endDate)} <span className="text-ink-3">{fmtWeekday(s.endDate)}</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-ink-3">
-              <Term hint={GLOSSARY.float}>Резерв</Term>
-            </dt>
-            <dd className={cx('font-medium', s.flags.critical && 'text-crimson')}>
-              {task.status === 'done' ? '—' : s.flags.critical ? 'нет' : fmtDays(s.float)}
-            </dd>
-          </div>
-          <p className="col-span-3 border-t border-line-soft pt-2.5 text-[12px] text-ink-2">
-            Старт: {driverText}
+        <div className="mt-4 rounded-lg border border-line px-3.5 py-3 text-[13px]">
+          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-[15px] font-semibold">
+              {fmtRange(s.startDate, s.endDate, ' → ')}
+            </span>
+            <span className="text-ink-3">
+              {task.durationDays > 0 ? fmtDaysLong(task.durationDays) : 'веха'}
+              {task.status !== 'done' && (
+                <>
+                  {' · '}
+                  <Term hint={GLOSSARY.float}>резерв</Term>{' '}
+                  <span className={cx(s.flags.critical && 'font-medium text-crimson')}>
+                    {s.flags.critical ? 'нет' : fmtDays(s.float)}
+                  </span>
+                </>
+              )}
+            </span>
           </p>
-        </dl>
+          <p className="mt-1 text-[12px] text-ink-2">Старт: {driverText}</p>
+          {alerts.length > 0 && (
+            <div
+              className={cx(
+                'mt-2.5 flex items-start gap-2 rounded-md px-2.5 py-2 text-[13px] leading-snug',
+                alerts[0]!.severity === 'high'
+                  ? 'bg-crimson-soft text-crimson'
+                  : 'bg-wave-soft text-wave-deep',
+              )}
+            >
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {alerts[0]!.text}
+                {alerts.length > 1 && (
+                  <span className="text-ink-2"> · и ещё {alerts.length - 1}</span>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-5 grid grid-cols-2 gap-x-3 gap-y-4">
@@ -306,36 +304,67 @@ export function TaskEditor({ task }: { task: Task }) {
             ))}
           </select>
         </Field>
-      </div>
-
-      <Section title="Зависит от">
-        <DepList
-          items={preds.map((d) => ({ dep: d, other: byId.get(d.predecessorId)! }))}
-          candidates={candidates}
-          onAdd={(id) => addDep(id, task.id)}
-          addLabel="Добавить предшественника"
-          showLag
-        />
-      </Section>
-      <Section title="Блокирует">
-        <DepList
-          items={succs.map((d) => ({ dep: d, other: byId.get(d.successorId)! }))}
-          candidates={candidates}
-          onAdd={(id) => addDep(task.id, id)}
-          addLabel="Добавить последующую задачу"
-        />
-      </Section>
-
-      <Section title="Сроки">
-        <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-          <Field label={<Term hint={GLOSSARY.dueDate}>Срок выполнения</Term>}>
+        <div className="col-span-2">
+          <Field
+            label={<Term hint={GLOSSARY.dueDate}>Сдать до</Term>}
+            hint={
+              task.dueDate && s && task.status !== 'done'
+                ? s.flags.missesDueDate
+                  ? `Прогноз окончания ${fmtDate(s.endDate)} — позже срока`
+                  : `Прогноз окончания ${fmtDate(s.endDate)} — успевает`
+                : 'Необязательно: если задать, Волна предупредит о срыве'
+            }
+          >
             <DateInput
-              label="срок выполнения"
+              label="сдать до"
               value={task.dueDate}
               onChange={(v) => patch({ dueDate: v })}
             />
           </Field>
-          <Field label="Начать не раньше">
+        </div>
+      </div>
+
+      <Section title="Связи">
+        <p className="mb-1.5 text-[12px] font-medium text-ink-3">Ждёт окончания</p>
+        <DepList
+          items={preds.map((d) => ({ dep: d, other: byId.get(d.predecessorId)! }))}
+          candidates={candidates}
+          onAdd={(id) => addDep(id, task.id)}
+          addLabel="Добавить задачу, которую ждёт"
+          showLag
+        />
+        <p className="mt-3.5 mb-1.5 text-[12px] font-medium text-ink-3">Блокирует</p>
+        <DepList
+          items={succs.map((d) => ({ dep: d, other: byId.get(d.successorId)! }))}
+          candidates={candidates}
+          onAdd={(id) => addDep(task.id, id)}
+          addLabel="Добавить задачу, которая ждёт эту"
+        />
+      </Section>
+
+      {task.status !== 'done' && (
+        <div className="mt-5">
+          <TaskEventsMenu task={task} />
+        </div>
+      )}
+
+      <details
+        open={hasExtra || undefined}
+        className="group mt-6 border-t border-line-soft pt-4 [&_summary::-webkit-details-marker]:hidden"
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-semibold text-ink select-none hover:text-cobalt outline-none focus-visible:ring-2 focus-visible:ring-cobalt">
+          <ChevronRight
+            size={15}
+            className="text-ink-3 transition-transform duration-150 group-open:rotate-90"
+          />
+          Дополнительно
+          <span className="ml-auto text-[12px] font-normal text-ink-3">старт, описание</span>
+        </summary>
+        <div className="mt-4 space-y-4">
+          <Field
+            label={<Term hint={GLOSSARY.startNotEarlier}>Начать не раньше</Term>}
+            hint="Например, подрядчик сможет подключиться только с этой даты"
+          >
             <DateInput
               label="начать не раньше"
               value={task.startNotEarlier}
@@ -343,118 +372,41 @@ export function TaskEditor({ task }: { task: Task }) {
             />
           </Field>
           {(task.status === 'in_progress' || task.status === 'done') && (
-            <Field label="Фактический старт">
-              <DateInput
-                label="фактический старт"
-                value={task.actualStart}
-                onChange={(v) => patch({ actualStart: v })}
-              />
-            </Field>
+            <div className="grid grid-cols-2 gap-x-3">
+              <Field label="Фактически начата" hint="Ставится сама при смене статуса">
+                <DateInput
+                  label="фактический старт"
+                  value={task.actualStart}
+                  onChange={(v) => patch({ actualStart: v })}
+                />
+              </Field>
+              {task.status === 'done' && (
+                <Field label="Фактически закончена">
+                  <DateInput
+                    label="фактическое окончание"
+                    value={task.actualEnd}
+                    onChange={(v) => patch({ actualEnd: v })}
+                  />
+                </Field>
+              )}
+            </div>
           )}
-          {task.status === 'done' && (
-            <Field label="Фактическое окончание">
-              <DateInput
-                label="фактическое окончание"
-                value={task.actualEnd}
-                onChange={(v) => patch({ actualEnd: v })}
-              />
-            </Field>
-          )}
+          <Field label="Описание">
+            <textarea
+              aria-label="Описание задачи"
+              placeholder="Что входит в задачу, критерии готовности"
+              className={inputClass + ' h-20 resize-none py-2'}
+              value={task.description}
+              onChange={(e) => patch({ description: e.target.value })}
+            />
+          </Field>
         </div>
-      </Section>
-
-      {task.status !== 'done' && (
-        <Section title="Что если…">
-          <div className="divide-y divide-line-soft rounded-lg border border-line px-3.5 text-[13px]">
-            <Scenario label="Задача оказалась сложнее">
-              {[2, 5, 10].map((n) => (
-                <Button
-                  key={n}
-                  size="sm"
-                  onClick={() => patch({ durationDays: task.durationDays + n })}
-                >
-                  +{n} дн.
-                </Button>
-              ))}
-            </Scenario>
-            <Scenario label="Смежник или подрядчик задерживает старт">
-              <span className="text-ink-2">до</span>
-              <input
-                type="date"
-                aria-label="Дата, раньше которой задача не начнётся"
-                className={inputClass + ' h-8 w-[150px] text-[13px]'}
-                value={delayDate}
-                onChange={(e) => setDelayDate(e.target.value)}
-              />
-              <Button
-                size="sm"
-                disabled={!delayDate}
-                onClick={() => patch({ startNotEarlier: delayDate })}
-              >
-                Задать
-              </Button>
-            </Scenario>
-            {task.assigneeId && (
-              <Scenario label="Исполнитель уходит в отпуск или болеет">
-                <Button
-                  size="sm"
-                  onClick={() => openEvent({ kind: 'absence', personId: task.assigneeId! })}
-                >
-                  Указать даты
-                </Button>
-              </Scenario>
-            )}
-            <Scenario label="Ответственный недоступен">
-              <select
-                aria-label="Кому передать задачу"
-                className={inputClass + ' h-8 w-[220px] text-[13px]'}
-                value=""
-                onChange={(e) => e.target.value && patch({ assigneeId: e.target.value })}
-              >
-                <option value="">Передать задачу…</option>
-                {state.people
-                  .filter((p) => p.id !== task.assigneeId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
-            </Scenario>
-            {task.status !== 'blocked' && (
-              <Scenario label="Работа встала">
-                <Button size="sm" onClick={() => patch(statusPatch(task, 'blocked', analysis))}>
-                  Заблокировать
-                </Button>
-              </Scenario>
-            )}
-          </div>
-        </Section>
-      )}
-
-      <Section title="Описание">
-        <textarea
-          aria-label="Описание задачи"
-          placeholder="Что входит в задачу, критерии готовности"
-          className={inputClass + ' h-20 resize-none py-2'}
-          value={task.description}
-          onChange={(e) => patch({ description: e.target.value })}
-        />
-      </Section>
+      </details>
 
       <Button variant="danger" size="sm" className="mt-5 -ml-2.5" onClick={remove}>
         <Trash2 size={14} /> Удалить задачу
       </Button>
     </section>
-  );
-}
-
-function Scenario({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="py-3">
-      <p className="mb-2 font-medium">{label}</p>
-      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
-    </div>
   );
 }
 
@@ -489,7 +441,7 @@ function DepList({
           key={dep.id}
           className="flex items-center gap-2 rounded-lg border border-line py-1 pr-1 pl-3 text-[13px]"
         >
-          <StatusDot status={other.status} size={7} />
+          <StatusIcon status={other.status} size={14} />
           <button
             type="button"
             className="min-w-0 flex-1 truncate rounded-sm text-left hover:text-cobalt hover:underline"

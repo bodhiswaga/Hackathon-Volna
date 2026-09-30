@@ -5,6 +5,7 @@ import {
   pluralDays,
   type Health,
   type ISODate,
+  type TaskFlags,
   type TaskStatus,
 } from '@volna/engine';
 
@@ -33,6 +34,11 @@ const dateTime = new Intl.DateTimeFormat('ru-RU', {
 export function fmtDate(date: ISODate | null | undefined): string {
   if (!date) return '—';
   return formatShort(date);
+}
+
+/** «2 окт — 7 окт»; у вехи (начало = окончание) — одна дата. */
+export function fmtRange(start: ISODate, end: ISODate, sep = ' — '): string {
+  return start === end ? fmtDate(end) : `${fmtDate(start)}${sep}${fmtDate(end)}`;
 }
 
 export function fmtWeekday(date: ISODate): string {
@@ -125,4 +131,20 @@ export function chanceTone(x: number): 'moss' | 'ochre' | 'crimson' {
 /** Класс цвета текста для вероятности. */
 export function chanceText(x: number): string {
   return { moss: 'text-moss', ochre: 'text-ochre', crimson: 'text-crimson' }[chanceTone(x)];
+}
+
+/**
+ * Признаки риска задачи — одними словами во всех видах (таблица, редактор, подсказки).
+ * Порядок — по важности; «блок» не нужен: это статус и он виден отдельно.
+ */
+export function riskLabels(f: TaskFlags): { text: string; tone: 'crimson' | 'wave' | 'ochre' }[] {
+  const out: { text: string; tone: 'crimson' | 'wave' | 'ochre' }[] = [];
+  if (f.pastDeadline) out.push({ text: 'За дедлайном', tone: 'crimson' });
+  if (f.missesDueDate) out.push({ text: 'Не успевает к сроку', tone: 'crimson' });
+  if (f.overdue) out.push({ text: 'Просрочена', tone: 'crimson' });
+  if (f.critical) out.push({ text: 'Критический путь', tone: 'crimson' });
+  if (f.overloaded) out.push({ text: 'Перегрузка', tone: 'wave' });
+  if (f.lowFloat) out.push({ text: 'Мало резерва', tone: 'wave' });
+  if (f.blockedByPredecessor) out.push({ text: 'Ждёт незавершённую', tone: 'ochre' });
+  return out;
 }

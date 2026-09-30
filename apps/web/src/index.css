@@ -37,6 +37,8 @@
   --color-ochre-soft: #f8f0de;
   --color-idle: #a9b0bd;
   --color-bar-idle: #e4e7ec;
+  /* Полоса выполненной задачи: зелёная, но не кричит; подпись на ней — ink. */
+  --color-done-bar: #a8d9bd;
   /* Светлые варианты сигналов — для текста на тёмной статусной полосе. */
   --color-moss-light: #7fdcb0;
   --color-wave-light: #ffb27a;
@@ -123,7 +125,6 @@ body {
   font-feature-settings: 'tnum' 1;
   -webkit-font-smoothing: antialiased;
 }
-
 
 ::selection {
   background: var(--color-cobalt-soft);
@@ -300,8 +301,14 @@ dialog[data-state='closed']::backdrop {
   }
 }
 
+/* Подпись React Flow (MIT) не скрываем — только приглушаем под наш стиль. */
 .react-flow__attribution {
-  display: none;
+  background: transparent;
+  font-size: 10px;
+  opacity: 0.6;
+}
+.react-flow__attribution a {
+  color: var(--color-ink-3);
 }
 .react-flow__controls {
   border-radius: 8px;

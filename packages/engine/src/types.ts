@@ -212,13 +212,23 @@ export interface ImpactReport {
 // --- Советник по срокам ---
 
 export type SuggestionKind =
-  'crash' | 'parallelize' | 'removeLag' | 'removeConstraint' | 'reassign' | 'moveDeadline';
+  | 'crash'
+  | 'parallelize'
+  | 'removeLag'
+  | 'removeConstraint'
+  | 'reassign'
+  | 'split'
+  | 'moveDeadline';
 
 export interface Suggestion {
   id: string;
   kind: SuggestionKind;
   title: string;
   description: string;
+  /** Почему совет касается именно этого места плана — из расчёта, а не общими словами. */
+  why: string;
+  /** Цена человеческими словами: переработка, помощник, риск переделок, переговоры. */
+  costText: string;
   ops: ChangeOp[];
   /** На сколько рабочих дней раньше закончится проект. */
   gainDays: number;
@@ -229,6 +239,8 @@ export interface Suggestion {
   cost: 1 | 2 | 3;
   /** Какие проблемы снимает (тексты алертов). */
   resolves: string[];
+  /** Какие новые проблемы создаёт (тексты алертов, которых до решения не было). */
+  sideEffects: string[];
 }
 
 export interface RecoveryPlan {
@@ -239,9 +251,19 @@ export interface RecoveryPlan {
   fitsDeadline: boolean;
 }
 
+export interface AdviseOptions {
+  /** Доля прогонов «Шанса успеть», где задача определяла финиш (Forecast.drivers). */
+  drivers?: { taskId: string; share: number }[];
+  /** Генератор id для новых задач и связей: движок чистый, без randomUUID внутри. */
+  newId?: () => string;
+}
+
 export interface Advice {
   suggestions: Suggestion[];
+  /** Минимальный план: вернуться в дедлайн. */
   plan: RecoveryPlan | null;
+  /** План с запасом (буфер ≥ LOW_BUFFER_DAYS), если он отличается от минимального. */
+  safePlan: RecoveryPlan | null;
 }
 
 // --- Прогноз «Шанс успеть» ---
@@ -342,5 +364,7 @@ export interface Brief {
   /** Письмо заказчику по разделам — для показа; `client` — то же одним текстом для копирования. */
   sections: BriefSection[];
   client: string;
+  /** Коротко для мессенджера: 3–4 строки. */
+  short: string;
   team: TeamMessage[];
 }

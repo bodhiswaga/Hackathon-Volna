@@ -60,10 +60,14 @@ interface DraftStore {
   projectId: string | null;
   /** Черновик изменений: применяется локально для what-if, на сервер уходит по «Применить». */
   ops: ChangeOp[];
+  /** Прежние состояния черновика — для Ctrl+Z (последнее — сверху). */
+  history: ChangeOp[][];
   /** Причина изменения для журнала; события «Что случилось?» подставляют её сами. */
   reason: string;
   /** Последнее действие, добавленное в черновик, — имя варианта по умолчанию. */
   lastAction: string;
+  /** Решение из советника, если черновик собран им: попадает в письмо заказчику. */
+  solution: string;
   selectedTaskId: string | null;
   tab: ViewTab;
   side: SidePanel;
@@ -72,6 +76,8 @@ interface DraftStore {
   compareOpen: boolean;
   openProject: (id: string) => void;
   setOps: (ops: ChangeOp[]) => void;
+  /** Вернуть черновик на шаг назад; false — отменять нечего. */
+  undo: () => boolean;
   setReason: (reason: string) => void;
   clearDraft: () => void;
   select: (taskId: string | null) => void;
@@ -86,11 +92,15 @@ interface DraftStore {
   setCompareOpen: (open: boolean) => void;
 }
 
+const HISTORY_LIMIT = 50;
+
 export const useDraft = create<DraftStore>((set, get) => ({
   projectId: null,
   ops: [],
+  history: [],
   reason: '',
   lastAction: '',
+  solution: '',
   selectedTaskId: null,
   tab: 'timeline',
   side: 'auto',
@@ -102,8 +112,10 @@ export const useDraft = create<DraftStore>((set, get) => ({
       set({
         projectId: id,
         ops: [],
+        history: [],
         reason: '',
         lastAction: '',
+        solution: '',
         selectedTaskId: null,
         side: 'auto',
         scenarios: loadScenarios(id),
@@ -112,9 +124,26 @@ export const useDraft = create<DraftStore>((set, get) => ({
       });
     }
   },
-  setOps: (ops) => set({ ops }),
+  setOps: (ops) =>
+    set((s) =>
+      s.ops === ops
+        ? s
+        : {
+            ops,
+            history: [...s.history, s.ops].slice(-HISTORY_LIMIT),
+            // Черновик опустел — выбранного решения больше нет.
+            ...(ops.length === 0 ? { solution: '' } : {}),
+          },
+    ),
+  undo: () => {
+    const { history } = get();
+    if (history.length === 0) return false;
+    const ops = history[history.length - 1]!;
+    set({ ops, history: history.slice(0, -1), ...(ops.length === 0 ? { solution: '' } : {}) });
+    return true;
+  },
   setReason: (reason) => set({ reason }),
-  clearDraft: () => set({ ops: [], reason: '', lastAction: '' }),
+  clearDraft: () => set({ ops: [], history: [], reason: '', lastAction: '', solution: '' }),
   select: (selectedTaskId) => set({ selectedTaskId, side: 'auto' }),
   setTab: (tab) => set({ tab }),
   setSide: (side) => set({ side }),

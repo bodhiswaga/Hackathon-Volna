@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Copy, Mail, Printer, X } from 'lucide-react';
+import { Copy, Mail, MessageCircle, Printer, X } from 'lucide-react';
 import { buildBrief } from '@volna/engine';
 import { useModel } from '../../lib/model';
 import { toast, useDraft } from '../../store/draft';
@@ -27,7 +27,8 @@ function PrintButton() {
 export function BriefDialog({ onClose }: { onClose: () => void }) {
   const { base, state, impact, ops, forecast, baseForecast } = useModel();
   const reason = useDraft((s) => s.reason);
-  const [tab, setTab] = useState<'client' | 'team'>('client');
+  const solution = useDraft((s) => s.solution);
+  const [tab, setTab] = useState<'client' | 'short' | 'team'>('client');
   const brief = useMemo(
     () =>
       impact &&
@@ -37,9 +38,10 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
         impact,
         ops,
         reason: reason || null,
+        solution: solution || null,
         chance: { before: baseForecast.chance, after: forecast.chance },
       }),
-    [base, state, impact, ops, reason, baseForecast.chance, forecast.chance],
+    [base, state, impact, ops, reason, solution, baseForecast.chance, forecast.chance],
   );
   if (!brief) return null;
   const people = new Map(state.people.map((p) => [p.id, p]));
@@ -70,6 +72,7 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
         onChange={setTab}
         options={[
           { id: 'client', label: 'Письмо заказчику' },
+          { id: 'short', label: 'Коротко' },
           { id: 'team', label: `Команде · ${brief.team.length}` },
         ]}
       />
@@ -109,6 +112,21 @@ export function BriefDialog({ onClose }: { onClose: () => void }) {
                 data-autofocus
               >
                 <Copy size={15} /> Скопировать письмо
+              </Button>
+            </div>
+          </>
+        ) : tab === 'short' ? (
+          <>
+            <p className="mb-2 flex items-center gap-1.5 text-[13px] text-ink-2">
+              <MessageCircle size={14} className="text-ink-3" />
+              Для мессенджера: заказчику или в рабочий чат, в три-четыре строки
+            </p>
+            <p className="print-area rounded-lg border border-line bg-paper px-5 py-4 text-[14px] leading-relaxed whitespace-pre-wrap">
+              {brief.short}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="primary" onClick={() => copy(brief.short, 'Сообщение скопировано')}>
+                <Copy size={15} /> Скопировать
               </Button>
             </div>
           </>

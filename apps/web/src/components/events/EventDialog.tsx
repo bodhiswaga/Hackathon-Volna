@@ -18,6 +18,7 @@ import {
   type ProjectEvent,
   type ProjectEventKind,
   type ProjectState,
+  type Task,
 } from '@volna/engine';
 import { chanceText, fmtBuffer, fmtChance, fmtDate, fmtDays, newId } from '../../lib/format';
 import { useModel, useProposeAction } from '../../lib/model';
@@ -107,6 +108,58 @@ export function EventsMenu() {
   );
 }
 
+/**
+ * «Что случилось с задачей?» в редакторе: те же события, что в верхней панели,
+ * но уже с этой задачей (и её исполнителем) — без дублирующих полей в самом редакторе.
+ */
+export function TaskEventsMenu({ task }: { task: Task }) {
+  const openEvent = useDraft((s) => s.openEvent);
+  const kinds = EVENT_KINDS.filter(
+    (e) =>
+      e.kind === 'harder' ||
+      (e.kind === 'delay' && (task.status === 'not_started' || task.status === 'blocked')) ||
+      (e.kind === 'absence' && task.assigneeId),
+  );
+  return (
+    <Popover
+      label="Что случилось с задачей?"
+      buttonClassName="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface text-sm font-medium text-ink transition-colors duration-150 hover:border-line-strong hover:bg-sunken active:bg-pressed aria-expanded:bg-sunken"
+      button={
+        <>
+          <Zap size={15} className="text-ink-2" />
+          Что случилось с задачей?
+        </>
+      }
+      panelClassName="w-full min-w-[280px]"
+    >
+      {(close) => (
+        <>
+          <p className="px-3 pt-2 pb-1.5 text-[12px] leading-snug text-ink-3">
+            Система поправит план и покажет последствия до применения
+          </p>
+          {kinds.map((e) => (
+            <MenuItem
+              key={e.kind}
+              icon={<e.icon size={16} />}
+              hint={e.hint}
+              onClick={() => {
+                close();
+                openEvent(
+                  e.kind === 'absence'
+                    ? { kind: 'absence', personId: task.assigneeId ?? undefined }
+                    : { kind: e.kind, taskId: task.id },
+                );
+              }}
+            >
+              {e.kind === 'absence' ? 'Исполнитель уходит в отпуск или болеет' : e.title}
+            </MenuItem>
+          ))}
+        </>
+      )}
+    </Popover>
+  );
+}
+
 /** Окно события: монтируется, пока в сторе есть запрос. */
 export function EventHost() {
   const request = useDraft((s) => s.event);
@@ -124,19 +177,25 @@ function initialEvent(
   state: ProjectState,
   today: string,
   es: (id: string) => string,
+  end: (id: string) => string,
 ) {
   const open = openTasks(state);
   const waiting = waitingTasks(state);
-  const firstPerson = req.personId ?? state.people[0]?.id ?? '';
   switch (req.kind) {
-    case 'absence':
+    case 'absence': {
+      const to = addWorkdays(today, 4);
+      // По умолчанию — тот, у кого в эти дни есть незавершённая работа: иначе превью пустое.
+      const busy = state.people.find((p) =>
+        open.some((t) => t.assigneeId === p.id && es(t.id) <= to && end(t.id) >= today),
+      );
       return {
         kind: 'absence',
-        personId: firstPerson,
+        personId: req.personId ?? busy?.id ?? state.people[0]?.id ?? '',
         from: today,
-        to: addWorkdays(today, 4),
+        to,
         handoverTo: null,
       } satisfies ProjectEvent;
+    }
     case 'harder':
       return {
         kind: 'harder',
@@ -173,7 +232,13 @@ function EventDialog({ request }: { request: EventRequest }) {
   const openEvent = useDraft((s) => s.openEvent);
   const proposeAction = useProposeAction();
   const [event, setEvent] = useState<ProjectEvent>(() =>
-    initialEvent(request, state, today, (id) => analysis.tasks[id]?.startDate ?? today),
+    initialEvent(
+      request,
+      state,
+      today,
+      (id) => analysis.tasks[id]?.startDate ?? today,
+      (id) => analysis.tasks[id]?.endDate ?? today,
+    ),
   );
   const meta = EVENT_KINDS.find((k) => k.kind === event.kind)!;
   const close = () => openEvent(null);

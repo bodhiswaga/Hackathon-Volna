@@ -1,8 +1,9 @@
-import { statusPatch, TASK_STATUSES, type TaskPatch } from '@volna/engine';
-import { fmtDate, fmtDays, STATUS_LABEL } from '../../lib/format';
+import { type TaskPatch } from '@volna/engine';
+import { fmtDate, fmtDays, fmtRange, riskLabels } from '../../lib/format';
 import { useModel, usePropose } from '../../lib/model';
 import { useDraft } from '../../store/draft';
-import { Chip, cx, Empty, StatusDot } from '../ui';
+import { StatusPicker } from '../task/StatusPicker';
+import { Chip, cx, Empty } from '../ui';
 
 const cell = 'border-b border-line-soft px-3 py-2 align-middle';
 const control =
@@ -27,8 +28,8 @@ export function TaskTable() {
       <table className="w-full border-separate border-spacing-0 overflow-clip rounded-2xl border border-line bg-surface text-[13px]">
         <thead>
           <tr className="text-left text-[12px] text-ink-3">
-            {['Задача', 'Ответственный', 'Статус', 'Длительность', 'Начало', 'Окончание', 'Срок', 'Резерв', 'Риски'].map((h) => (
-              <th key={h} className="glass sticky top-0 z-10 border-b border-line px-3 py-2.5 font-medium">
+            {['Задача', 'Ответственный', 'Статус', 'Дней', 'Даты', 'Сдать до', 'Резерв', 'Риски'].map((h) => (
+              <th key={h} className="glass sticky top-0 z-10 border-b border-line px-3 py-2.5 font-medium whitespace-nowrap">
                 {h}
               </th>
             ))}
@@ -48,9 +49,8 @@ export function TaskTable() {
                   selectedId === id ? 'bg-cobalt-soft' : imp ? 'bg-wave-soft' : 'hover:bg-paper/70',
                 )}
               >
-                <td className={cell + ' max-w-[280px]'}>
+                <td className={cell + ' max-w-[220px]'}>
                   <button type="button" onClick={() => select(id)} className="flex max-w-full items-start gap-2 text-left">
-                    <span className="mt-[5px]"><StatusDot status={t.status} /></span>
                     <span className="min-w-0">
                     <span className="block truncate font-medium hover:underline">{t.name}</span>
                     {preds.length > 0 && <span className="block truncate text-[12px] text-ink-3">после: {preds.join(', ')}</span>}
@@ -58,7 +58,7 @@ export function TaskTable() {
                   </button>
                 </td>
                 <td className={cell}>
-                  <select className={control + ' max-w-[160px]'} value={t.assigneeId ?? ''} onChange={(e) => patch(id, { assigneeId: e.target.value || null })}>
+                  <select className={control + ' max-w-[140px]'} value={t.assigneeId ?? ''} onChange={(e) => patch(id, { assigneeId: e.target.value || null })}>
                     <option value="">Не назначен</option>
                     {state.people.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -68,13 +68,7 @@ export function TaskTable() {
                   </select>
                 </td>
                 <td className={cell}>
-                  <select className={control} value={t.status} onChange={(e) => patch(id, statusPatch(t, e.target.value as (typeof TASK_STATUSES)[number], a))}>
-                    {TASK_STATUSES.map((st) => (
-                      <option key={st} value={st}>
-                        {STATUS_LABEL[st]}
-                      </option>
-                    ))}
-                  </select>
+                  <StatusPicker task={t} size="sm" />
                 </td>
                 <td className={cell}>
                   <input
@@ -86,9 +80,8 @@ export function TaskTable() {
                     aria-label="Длительность в рабочих днях"
                   />
                 </td>
-                <td className={cell + ' whitespace-nowrap'}>{fmtDate(s.startDate)}</td>
                 <td className={cell + ' whitespace-nowrap'}>
-                  {fmtDate(s.endDate)}
+                  {fmtRange(s.startDate, s.endDate, ' → ')}
                   {imp && imp.deltaEnd !== 0 && (
                     <span className={cx('ml-1.5 text-[12px] font-semibold', imp.deltaEnd > 0 ? 'text-wave' : 'text-moss')}>
                       {fmtDays(imp.deltaEnd, true)}
@@ -100,20 +93,31 @@ export function TaskTable() {
                   {t.status === 'done' ? '—' : s.flags.critical ? 'нет' : fmtDays(s.float)}
                 </td>
                 <td className={cell}>
-                  <div className="flex flex-wrap gap-1">
-                    {s.flags.critical && <Chip tone="crimson">крит. путь</Chip>}
-                    {s.flags.missesDueDate && <Chip tone="crimson">срыв срока</Chip>}
-                    {s.flags.overdue && <Chip tone="crimson">просрочена</Chip>}
-                    {s.flags.blocked && <Chip tone="ochre">блок</Chip>}
-                    {s.flags.overloaded && <Chip tone="wave">перегруз</Chip>}
-                    {s.flags.lowFloat && <Chip tone="wave">мало резерва</Chip>}
-                  </div>
+                  <RiskChips labels={riskLabels(s.flags)} />
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** Главный признак в строке, остальные — числом с подсказкой. */
+function RiskChips({ labels }: { labels: ReturnType<typeof riskLabels> }) {
+  if (labels.length === 0) return <span className="text-ink-3">—</span>;
+  const rest = labels.slice(1);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {labels.slice(0, 1).map((l) => (
+        <Chip key={l.text} tone={l.tone}>
+          {l.text}
+        </Chip>
+      ))}
+      {rest.length > 0 && (
+        <Chip title={rest.map((l) => l.text).join(', ')}>+{rest.length}</Chip>
+      )}
     </div>
   );
 }

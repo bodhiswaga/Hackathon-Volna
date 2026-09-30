@@ -4,7 +4,18 @@ import { addWorkdays, type Health } from '@volna/engine';
 import type { ProjectListItem } from '../api/client';
 import { useCreateProject, useDeleteProject, useProjects, useResetDemo } from '../api/hooks';
 import { navigate } from '../lib/router';
-import { Button, Chip, Dialog, Empty, Field, IconButton, inputClass, SeaLine, Skeleton, WaveMark } from '../components/ui';
+import {
+  Button,
+  Chip,
+  Dialog,
+  Empty,
+  Field,
+  IconButton,
+  inputClass,
+  SeaLine,
+  Skeleton,
+  WaveMark,
+} from '../components/ui';
 import { fmtDate, HEALTH_COLOR, HEALTH_TEXT, todayISO } from '../lib/format';
 import { confirmAction } from '../store/draft';
 
@@ -34,17 +45,23 @@ export function ProjectsPage() {
           Если сейчас что-то изменится, что произойдёт с проектом?
         </h1>
         <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-ink-2">
-          Волна пересчитывает план при каждом изменении: показывает, какие задачи сдвинутся, успеет ли проект к
-          дедлайну и какие решения помогут вернуть сроки.
+          Волна пересчитывает план при каждом изменении: показывает, какие задачи сдвинутся, успеет
+          ли проект к дедлайну и какие решения помогут вернуть сроки.
         </p>
       </section>
 
-      <SeaLine amplitude={0.38} color="var(--color-ink-3)" duration={26} className="relative mt-10 h-12 w-full" />
+      <SeaLine
+        amplitude={0.38}
+        color="var(--color-ink-3)"
+        duration={26}
+        className="relative mt-10 h-12 w-full"
+      />
 
       <main className="mx-auto max-w-5xl px-6 pt-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h2 className="font-display text-xl font-semibold">
-            Проекты{data && data.length > 0 && <span className="ml-2 text-ink-3">{data.length}</span>}
+            Проекты
+            {data && data.length > 0 && <span className="ml-2 text-ink-3">{data.length}</span>}
           </h2>
           <div className="flex gap-2">
             {data && !hasDemo && (
@@ -84,7 +101,9 @@ export function ProjectsPage() {
               Создайте свой проект или откройте демо: там уже есть задачи, связи и команда.
             </Empty>
           )}
-          {data?.map((item, i) => <ProjectRow key={item.project.id} item={item} first={i === 0} />)}
+          {data?.map((item, i) => (
+            <ProjectRow key={item.project.id} item={item} first={i === 0} />
+          ))}
         </div>
       </main>
 
@@ -98,7 +117,9 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
   const empty = item.stats.total === 0;
   const late = item.bufferDays < 0;
   return (
-    <div className={'group relative flex items-center ' + (first ? '' : 'border-t border-line-soft')}>
+    <div
+      className={'group relative flex items-center ' + (first ? '' : 'border-t border-line-soft')}
+    >
       <span
         className="absolute top-4 bottom-4 left-0 w-[3px] rounded-r-full"
         style={{ background: empty ? 'var(--color-idle)' : HEALTH_COLOR[item.health] }}
@@ -110,7 +131,8 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium">{item.project.name}</p>
           <p className="mt-0.5 truncate text-[13px] text-ink-3">
-            {item.project.description || `${fmtDate(item.project.startDate)} — ${fmtDate(item.project.deadline)}`}
+            {item.project.description ||
+              `${fmtDate(item.project.startDate)} — ${fmtDate(item.project.deadline)}`}
           </p>
         </div>
         <div className="hidden w-44 md:block">
@@ -120,22 +142,24 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
             <Chip tone={HEALTH_TONE[item.health]}>{HEALTH_TEXT[item.health]}</Chip>
           )}
         </div>
-        <dl className="hidden w-40 text-[13px] sm:block">
-          <div className="flex justify-between gap-2">
-            <dt className="text-ink-3">Финиш</dt>
-            <dd className={late ? 'font-medium text-crimson' : 'font-medium'}>{fmtDate(item.finishDate)}</dd>
-          </div>
-          <div className="flex justify-between gap-2">
-            <dt className="text-ink-3">Дедлайн</dt>
-            <dd className="font-medium">{fmtDate(item.project.deadline)}</dd>
-          </div>
+        <dl className="hidden w-36 grid-cols-[auto_1fr] gap-x-3 text-[13px] sm:grid">
+          <dt className="text-ink-3">Прогноз</dt>
+          <dd className={late ? 'font-medium text-crimson' : 'font-medium'}>
+            {fmtDate(item.finishDate)}
+          </dd>
+          <dt className="text-ink-3">Дедлайн</dt>
+          <dd className="font-medium">{fmtDate(item.project.deadline)}</dd>
         </dl>
-        <div className="hidden w-28 lg:block">
-          <p className="text-right text-[13px] text-ink-3">
-            {item.stats.done} из {item.stats.total}
+        <div className="hidden w-32 lg:block">
+          <p className="text-[13px] text-ink-3">
+            Готово <span className="font-medium text-ink">{item.stats.done}</span> из{' '}
+            {item.stats.total}
           </p>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line-soft">
-            <div className="h-full rounded-full bg-moss" style={{ width: `${item.stats.progressPct}%` }} />
+            <div
+              className="h-full rounded-full bg-moss"
+              style={{ width: `${item.stats.progressPct}%` }}
+            />
           </div>
         </div>
       </a>
@@ -144,17 +168,17 @@ function ProjectRow({ item, first }: { item: ProjectListItem; first: boolean }) 
       ) : (
         <IconButton
           label="Удалить проект"
-        className="mr-3 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-crimson-soft hover:text-crimson"
-        onClick={async () => {
-          const ok = await confirmAction({
-            title: `Удалить проект «${item.project.name}»?`,
-            text: 'Задачи, команда и журнал изменений будут удалены без возможности восстановления.',
-            confirmLabel: 'Удалить проект',
-            danger: true,
-          });
-          if (ok) remove.mutate(item.project.id);
-        }}
-      >
+          className="mr-3 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-crimson-soft hover:text-crimson"
+          onClick={async () => {
+            const ok = await confirmAction({
+              title: `Удалить проект «${item.project.name}»?`,
+              text: 'Задачи, команда и журнал изменений будут удалены без возможности восстановления.',
+              confirmLabel: 'Удалить проект',
+              danger: true,
+            });
+            if (ok) remove.mutate(item.project.id);
+          }}
+        >
           <Trash2 size={16} />
         </IconButton>
       )}

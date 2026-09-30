@@ -109,6 +109,42 @@ export function usePropose() {
   );
 }
 
+/** Id задачи, созданной операцией, — чтобы вместе с ней убрать и правки, которые на неё ссылаются. */
+const createdId = (op: ChangeOp) => (op.type === 'createTask' ? op.task.id : null);
+const refersTo = (op: ChangeOp, id: string) =>
+  (op.type === 'updateTask' && op.taskId === id) ||
+  (op.type === 'addDependency' &&
+    (op.dependency.predecessorId === id || op.dependency.successorId === id));
+
+/**
+ * Убрать из черновика одну правку, остальные оставить. Если правка создавала задачу,
+ * уходят и её связи. Если без правки черновик не собирается — говорим об этом тостом.
+ */
+export function useRemoveDraftOp() {
+  const model = useModel();
+  const setOps = useDraft((s) => s.setOps);
+  return useCallback(
+    (index: number) => {
+      const ops = useDraft.getState().ops;
+      const removed = ops[index];
+      if (!removed) return;
+      const id = createdId(removed);
+      const next = ops.filter((op, i) => i !== index && !(id && refersTo(op, id)));
+      try {
+        applyChangeSet(model.base, next);
+      } catch {
+        toast('Эту правку нельзя убрать отдельно: от неё зависят другие правки черновика', 'error');
+        return;
+      }
+      setOps(next);
+      toast('Правка убрана из черновика', 'info', {
+        action: { label: 'Вернуть', onClick: () => useDraft.getState().setOps(ops) },
+      });
+    },
+    [model.base, setOps],
+  );
+}
+
 // Задача, которую только что создали: редактор откроется с выделенным названием, чтобы сразу его ввести.
 let focusNameOf: string | null = null;
 export function takeNameFocus(taskId: string): boolean {

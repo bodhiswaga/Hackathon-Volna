@@ -14,12 +14,12 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Cable, Flame, Plus, Trash2, X } from 'lucide-react';
+import { Cable, Plus, Trash2, X } from 'lucide-react';
 import type { Person, Task, TaskImpact, TaskSchedule } from '@volna/engine';
-import { fmtDate, fmtDays, newId, STATUS_COLOR, STATUS_LABEL } from '../../lib/format';
+import { fmtDays, fmtRange, newId, STATUS_LABEL } from '../../lib/format';
 import { useAddTask, useModel, usePropose, useRecalcFlash } from '../../lib/model';
 import { toast, useDraft } from '../../store/draft';
-import { Avatar, Button, cx, Empty, IconButton } from '../ui';
+import { Avatar, Button, cx, Empty, IconButton, StatusIcon } from '../ui';
 
 const NODE_W = 232;
 const NODE_H = 74;
@@ -74,11 +74,7 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskNodeType>) {
         className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-ink-3"
       />
       <div className="relative flex items-center gap-1.5">
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: STATUS_COLOR[task.status] }}
-          title={STATUS_LABEL[task.status]}
-        />
+        <StatusIcon status={task.status} size={15} />
         <span
           className={cx(
             'min-w-0 flex-1 truncate text-[13px] font-semibold',
@@ -88,12 +84,9 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskNodeType>) {
         >
           {task.name}
         </span>
-        {crit && (
-          <Flame size={13} className="shrink-0 text-crimson" aria-label="На критическом пути" />
-        )}
       </div>
       <p className="relative mt-0.5 text-[12px] text-ink-2">
-        {fmtDate(sched.startDate)} — {fmtDate(sched.endDate)}
+        {fmtRange(sched.startDate, sched.endDate)}
         {task.durationDays === 0 && ', веха'}
       </p>
       <div className="relative mt-1 flex items-center gap-1.5">
@@ -304,7 +297,7 @@ export function GraphView() {
         fitViewOptions={{ padding: 0.08 }}
         minZoom={0.3}
         nodesConnectable
-        proOptions={{ hideAttribution: true }}
+        attributionPosition="top-right"
       >
         <Background gap={24} size={1.2} color="var(--color-line)" />
         <Controls showInteractive={false} />

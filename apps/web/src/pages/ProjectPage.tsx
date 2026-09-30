@@ -1,12 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
   BookmarkPlus,
@@ -107,8 +99,32 @@ export function ProjectPage({ id }: { id: string }) {
       <ProjectLayout />
       <EventHost />
       <CompareHost />
+      <DraftUndoHotkey />
     </ModelContext.Provider>
   );
+}
+
+/** Ctrl+Z (⌘Z) возвращает черновик на шаг назад — кроме случаев, когда фокус в поле ввода. */
+function DraftUndoHotkey() {
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+      if (
+        (e.target as HTMLElement | null)?.closest(
+          'input, textarea, select, [contenteditable="true"]',
+        )
+      ) {
+        return;
+      }
+      if (useDraft.getState().undo()) {
+        e.preventDefault();
+        toast('Черновик: шаг назад', 'info');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  return null;
 }
 
 /**
@@ -232,7 +248,7 @@ function TopBar() {
         <div className="min-w-0 flex-1 lg:flex-initial">
           <Popover
             label="Меню проекта"
-            buttonClassName="flex w-full max-w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors duration-150 hover:bg-sunken active:bg-pressed aria-expanded:bg-sunken md:w-auto lg:max-w-[220px] xl:max-w-[300px] 2xl:max-w-[440px]"
+            buttonClassName="flex w-full max-w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors duration-150 hover:bg-sunken active:bg-pressed aria-expanded:bg-sunken md:w-auto lg:max-w-[220px] xl:max-w-[360px] 2xl:max-w-[440px]"
             button={(open) => (
               <>
                 <span className="min-w-0">
@@ -327,27 +343,12 @@ function Tabs({ className }: { className?: string }) {
   const tab = useDraft((s) => s.tab);
   const setTab = useDraft((s) => s.setTab);
   const listRef = useRef<HTMLElement>(null);
-  const barRef = useRef<HTMLSpanElement>(null);
 
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const bar = barRef.current;
-    if (!list || !bar) return;
-    let first = true;
-    const measure = () => {
-      const el = list.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
-      if (!el || el.offsetWidth === 0) return;
-      // Первый замер без перехода, чтобы полоска не «прилетала» из левого края.
-      bar.style.transition = first ? 'none' : '';
-      bar.style.transform = `translateX(${el.offsetLeft + 8}px) scaleX(${el.offsetWidth - 16})`;
-      bar.style.opacity = '1';
-      first = false;
-      el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(list);
-    return () => ro.disconnect();
+  // На узком экране вкладки прокручиваются: активная всегда в зоне видимости.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-tab="${tab}"]`)
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [tab]);
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -370,28 +371,36 @@ function Tabs({ className }: { className?: string }) {
         className,
       )}
     >
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          data-tab={t.id}
-          type="button"
-          role="tab"
-          aria-selected={tab === t.id}
-          tabIndex={tab === t.id ? 0 : -1}
-          onClick={() => setTab(t.id)}
-          className={cx(
-            'relative flex h-11 shrink-0 items-center rounded-lg px-3 text-sm focus-visible:outline-offset-[-8px] font-medium whitespace-nowrap transition-colors duration-150 lg:h-full lg:px-2.5 xl:px-3',
-            tab === t.id ? 'text-ink' : 'text-ink-3 hover:text-ink',
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
-      <span
-        ref={barRef}
-        aria-hidden
-        className="pointer-events-none absolute bottom-0 left-0 h-0.5 w-px origin-left bg-cobalt opacity-0 transition-transform duration-200 ease-[var(--ease-out-soft)]"
-      />
+      {TABS.map((t) => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            data-tab={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => setTab(t.id)}
+            className={cx(
+              'flex h-11 shrink-0 items-stretch rounded-lg px-3 text-sm font-medium whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-8px] lg:h-full lg:px-2.5 xl:px-3',
+              active ? 'text-ink' : 'text-ink-3 hover:text-ink',
+            )}
+          >
+            {/* Полоса — часть надписи: всегда ровно по её ширине, без замеров и при любом шрифте. */}
+            <span data-tab-label className="relative flex items-center">
+              {t.label}
+              <span
+                aria-hidden
+                className={cx(
+                  'pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-center rounded-full bg-cobalt transition-transform duration-200 ease-[var(--ease-out-soft)]',
+                  active ? 'scale-x-100' : 'scale-x-0',
+                )}
+              />
+            </span>
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -528,7 +537,7 @@ function VariantsButton() {
         aria-label={`Сравнить варианты: ${count}`}
       >
         <Columns3 size={15} />
-        <span className="hidden 2xl:inline">Варианты</span>
+        <span className="hidden xl:inline">Варианты</span>
         <span className="rounded-md bg-sunken px-1.5 text-[12px] leading-5 text-ink-2">
           {count}
         </span>
@@ -551,6 +560,7 @@ function DraftBar({ compact, onDetails }: { compact?: boolean; onDetails?: () =>
   const saveScenario = useDraft((s) => s.saveScenario);
   const apply = useApplyChanges(base.project.id);
   const n = ops.length;
+
   const saved = scenarios.find((s) => sameOps(s.ops, ops));
   const v = impact ? VERDICT[impact.verdict] : null;
 

@@ -16,6 +16,8 @@ export interface BriefInput {
   impact: ImpactReport;
   ops: ChangeOp[];
   reason: string | null;
+  /** Выбранное решение (из советника), если черновик собран им. */
+  solution?: string | null;
   /** Вероятность уложиться в дедлайн до и после (0…1), если посчитана. */
   chance?: { before: number; after: number };
 }
@@ -40,7 +42,15 @@ export function firstName(fullName: string): string {
 }
 
 /** Готовые тексты об изменении: письмо заказчику и личные сообщения затронутым людям. */
-export function buildBrief({ before, after, impact, ops, reason, chance }: BriefInput): Brief {
+export function buildBrief({
+  before,
+  after,
+  impact,
+  ops,
+  reason,
+  solution,
+  chance,
+}: BriefInput): Brief {
   const project = after.project.name;
   const deadline = after.project.deadline;
   const lines = describeOps(before, ops);
@@ -85,18 +95,46 @@ export function buildBrief({ before, after, impact, ops, reason, chance }: Brief
           ? `Срок сдачи сохраняется, запас сокращается до ${daysText(impact.bufferAfter)}. Решений с вашей стороны не требуется.`
           : 'Срок сдачи сохраняется. Решений с вашей стороны не требуется.';
 
+  // Решение, которое руководитель уже выбрал: заказчик видит не только проблему, но и выход.
+  const proposal = solution?.trim()
+    ? [
+        `Предлагаемое решение: ${solution.trim()}${chance ? ` — вероятность успеть с ним ${pct(chance.after)}` : ''}.`,
+      ]
+    : [];
   const sections: BriefSection[] = [
     { title: 'Что произошло', lines: happened },
     { title: 'Как это влияет на сроки', lines: timing },
-    { title: 'Что нужно от вас', lines: [ask] },
+    { title: 'Что нужно от вас', lines: [...proposal, ask] },
   ];
   const client = [GREETING, ...sections.map((x) => [x.title, ...x.lines].join('\n'))].join('\n\n');
+
+  // Коротко для мессенджера: главное в трёх-четырёх строках, без приветствия и списков.
+  const shortAsk =
+    impact.bufferAfter < 0
+      ? `Нужно решение: перенос дедлайна на ${daysText(-impact.bufferAfter)} или доп. ресурсы.`
+      : deadlineMoved
+        ? `Прошу подтвердить новый срок: ${formatShort(impact.deadlineAfter)}.`
+        : chance && chance.after < 0.5
+          ? 'Срок формально сохраняется, но запаса нет — держим на контроле.'
+          : 'Срок сдачи сохраняется, решений не требуется.';
+  const finishLine =
+    impact.finishDelta !== 0
+      ? `прогноз сдачи ${formatShort(impact.finishBefore)} → ${formatShort(impact.finishAfter)} (${signedDays(impact.finishDelta)})`
+      : `прогноз сдачи без изменений — ${formatShort(impact.finishAfter)}`;
+  const chanceLine = chance ? `, шанс успеть ${pct(chance.before)} → ${pct(chance.after)}` : '';
+  const short = [
+    `${project}: ${finishLine}.`,
+    `Дедлайн ${formatShort(deadline)}: ${bufferText(impact.bufferAfter)}${chanceLine}.`,
+    ...(reason?.trim() ? [`Причина: ${reason.trim()}.`] : []),
+    solution?.trim() ? `Решение: ${solution.trim()}. ${shortAsk}` : shortAsk,
+  ].join('\n');
 
   return {
     subject,
     greeting: GREETING,
     sections,
     client,
+    short,
     team: teamMessages(before, after, impact, reason),
   };
 }

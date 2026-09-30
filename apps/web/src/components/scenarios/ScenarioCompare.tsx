@@ -380,7 +380,7 @@ function CompareDialog() {
                   >
                     {c.id === recommended && (
                       <span className="absolute -top-3 left-3 rounded-md bg-moss px-1.5 py-0.5 text-[12px] font-semibold text-white">
-                        Выше шанс успеть
+                        Лучший из вариантов
                       </span>
                     )}
                     <span className="block text-[13px] font-semibold text-ink">{c.label}</span>

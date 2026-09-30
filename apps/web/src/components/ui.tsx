@@ -13,9 +13,19 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Check, Info, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  Circle,
+  CircleCheck,
+  CircleDashed,
+  CirclePlay,
+  Info,
+  OctagonPause,
+  X,
+} from 'lucide-react';
 import type { Person, TaskStatus } from '@volna/engine';
-import { initials, STATUS_COLOR, STATUS_LABEL } from '../lib/format';
+import { initials, STATUS_COLOR, STATUS_LABEL, STATUS_SHORT } from '../lib/format';
 import { useConfirmStore, useToasts, type Toast } from '../store/draft';
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -270,6 +280,99 @@ export function StatusDot({ status, size = 8 }: { status: TaskStatus; size?: num
       }}
       title={STATUS_LABEL[status]}
     />
+  );
+}
+
+/** Статус задачи: иконка + цвет, чтобы различать статусы и без цветового зрения. */
+export const STATUS_ICON: Record<TaskStatus, typeof Circle> = {
+  not_started: CircleDashed,
+  in_progress: CirclePlay,
+  blocked: OctagonPause,
+  done: CircleCheck,
+};
+
+const STATUS_BADGE: Record<TaskStatus, string> = {
+  not_started: 'border-line-strong bg-surface text-ink-2',
+  in_progress: 'border-cobalt/30 bg-cobalt-soft text-cobalt-deep',
+  blocked: 'border-ochre-bar/40 bg-ochre-soft text-ochre',
+  done: 'border-moss/25 bg-moss-soft text-moss',
+};
+
+// Компактный вариант (только иконка) — сплошной кружок: статус читается с первого взгляда в списке.
+const STATUS_SOLID: Record<TaskStatus, string> = {
+  not_started: 'border-dashed border-idle bg-surface text-ink-3',
+  in_progress: 'border-cobalt bg-cobalt text-white',
+  blocked: 'border-ochre-bar bg-ochre-bar text-white',
+  done: 'border-moss bg-moss text-white',
+};
+
+const STATUS_ICON_COLOR: Record<TaskStatus, string> = {
+  not_started: 'text-ink-3',
+  in_progress: 'text-cobalt',
+  blocked: 'text-ochre-bar',
+  done: 'text-moss',
+};
+
+export function StatusIcon({
+  status,
+  size = 16,
+  className,
+}: {
+  status: TaskStatus;
+  size?: number;
+  className?: string;
+}) {
+  const Icon = STATUS_ICON[status];
+  return (
+    <Icon
+      size={size}
+      strokeWidth={2.2}
+      aria-label={STATUS_LABEL[status]}
+      className={cx('shrink-0', className ?? STATUS_ICON_COLOR[status])}
+    />
+  );
+}
+
+/**
+ * Пилюля статуса: иконка, короткая подпись, мягкий фон своего цвета.
+ * Образец — Status из 21st.dev (diceui), переписан на наши токены и иконки lucide.
+ */
+export function StatusBadge({
+  status,
+  size = 'md',
+  iconOnly,
+  count,
+  className,
+}: {
+  status: TaskStatus;
+  size?: 'sm' | 'md';
+  /** На узких экранах: только иконка в рамке. */
+  iconOnly?: boolean;
+  /** Число задач в статусе — внутри пилюли, после подписи. */
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border font-medium whitespace-nowrap',
+        size === 'sm' ? 'h-[22px] text-[12px]' : 'h-7 text-[13px]',
+        iconOnly
+          ? size === 'sm'
+            ? 'w-[22px] justify-center'
+            : 'w-7 justify-center'
+          : size === 'sm'
+            ? 'pr-2 pl-1'
+            : 'pr-2.5 pl-1.5',
+        iconOnly ? STATUS_SOLID[status] : STATUS_BADGE[status],
+        className,
+      )}
+      title={iconOnly ? STATUS_LABEL[status] : undefined}
+    >
+      <StatusIcon status={status} size={size === 'sm' ? 14 : 16} className="text-current" />
+      {!iconOnly && STATUS_SHORT[status]}
+      {count !== undefined && <span className="ml-0.5 font-semibold tabular-nums">{count}</span>}
+    </span>
   );
 }
 

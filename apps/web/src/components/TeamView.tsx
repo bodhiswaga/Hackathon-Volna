@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Trash2, UserPlus } from 'lucide-react';
 import { usePeopleMutations } from '../api/hooks';
-import { fmtDate } from '../lib/format';
+import { fmtRange, fmtTasks } from '../lib/format';
 import { useModel } from '../lib/model';
 import { confirmAction, useDraft } from '../store/draft';
-import { Avatar, Button, Chip, cx, IconButton, inputClass, StatusDot } from './ui';
+import { Avatar, Button, Chip, cx, IconButton, inputClass, StatusIcon } from './ui';
 
 export function TeamView() {
   const { state, analysis: a } = useModel();
@@ -21,7 +21,8 @@ export function TeamView() {
     <div className="mx-auto max-w-4xl px-6 py-8">
       <h2 className="font-display text-xl font-semibold">Команда и загрузка</h2>
       <p className="mt-1 text-sm text-ink-2">
-        Незавершённые задачи каждого человека по датам. Если задачи одного человека пересекаются, он перегружен.
+        Незавершённые задачи каждого человека по датам. Если задачи одного человека пересекаются, он
+        перегружен.
       </p>
 
       <div className="mt-6 space-y-3">
@@ -55,12 +56,17 @@ export function TeamView() {
                     className="w-full rounded-md border border-transparent px-1 text-[13px] text-ink-2 outline-none transition-colors hover:border-line focus:border-cobalt"
                     defaultValue={p.role}
                     placeholder="Роль"
-                    onBlur={(e) => e.target.value !== p.role && update.mutate({ personId: p.id, role: e.target.value })}
+                    onBlur={(e) =>
+                      e.target.value !== p.role &&
+                      update.mutate({ personId: p.id, role: e.target.value })
+                    }
                     aria-label="Роль"
                   />
                 </div>
                 {overloaded && <Chip tone="wave">перегружен</Chip>}
-                <span className="text-[13px] whitespace-nowrap text-ink-3">{tasks.length} в плане</span>
+                <span className="text-[13px] whitespace-nowrap text-ink-3">
+                  {tasks.length > 0 ? `${fmtTasks(tasks.length)} впереди` : 'задач нет'}
+                </span>
                 <IconButton
                   label={`Удалить ${p.name}`}
                   className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-crimson-soft hover:text-crimson"
@@ -91,11 +97,9 @@ export function TeamView() {
                             s.flags.overloaded ? 'border-wave/50 bg-wave-soft' : 'border-line',
                           )}
                         >
-                          <StatusDot status={t.status} size={7} />
+                          <StatusIcon status={t.status} size={13} />
                           <span className="font-medium">{t.name}</span>
-                          <span className="text-ink-3">
-                            {fmtDate(s.startDate)} — {fmtDate(s.endDate)}
-                          </span>
+                          <span className="text-ink-3">{fmtRange(s.startDate, s.endDate)}</span>
                         </button>
                       </li>
                     );

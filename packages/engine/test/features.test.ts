@@ -182,6 +182,26 @@ describe('брифинг «Сообщить»', () => {
     expect(brief.team.map((m) => m.personId)).toEqual(['p', 'q']);
     expect(brief.team[0].text).toContain('«B»');
     expect(brief.team[1].text).toContain('«D»');
+    // Коротко для мессенджера: без приветствия, с причиной и просьбой о решении, не длиннее 4 строк.
+    expect(brief.short.split('\n').length).toBeLessThanOrEqual(4);
+    expect(brief.short).not.toContain('Здравствуйте');
+    expect(brief.short).toContain('Причина: Анализ сложнее.');
+    expect(brief.short).toContain('Нужно решение');
+    // Выбранное в советнике решение попадает в письмо вместе с шансом.
+    const withSolution = buildBrief({
+      before,
+      after,
+      impact,
+      ops,
+      reason: null,
+      solution: 'Ольга берёт часть «B»',
+      chance: { before: 0.9, after: 0.7 },
+    });
+    expect(withSolution.client).toContain(
+      'Предлагаемое решение: Ольга берёт часть «B» — вероятность успеть с ним 70%.',
+    );
+    expect(withSolution.short).toContain('Решение: Ольга берёт часть «B».');
+    expect(withSolution.short.split('\n').length).toBeLessThanOrEqual(4);
 
     // Тот же сдвиг, но с переносом дедлайна: у заказчика просим подтвердить новый срок.
     const moved: ChangeOp[] = [
@@ -204,5 +224,6 @@ describe('брифинг «Сообщить»', () => {
       reason: null,
     });
     expect(briefMoved.client).toContain('Нужно подтвердить новый срок сдачи: 22 сен → 2 окт');
+    expect(briefMoved.short).toContain('Прошу подтвердить новый срок: 2 окт.');
   });
 });

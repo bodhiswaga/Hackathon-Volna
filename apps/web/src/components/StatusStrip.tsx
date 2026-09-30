@@ -1,16 +1,8 @@
 import type { ReactNode } from 'react';
 import { ChevronRight, Lightbulb } from 'lucide-react';
-import type { Health } from '@volna/engine';
+import { plural, type Health } from '@volna/engine';
 import { useModel } from '../lib/model';
-import {
-  chanceTone,
-  fmtChance,
-  fmtDate,
-  fmtDays,
-  fmtTasks,
-  HEALTH_COLOR,
-  HEALTH_TEXT,
-} from '../lib/format';
+import { chanceTone, fmtChance, fmtDate, fmtDays, HEALTH_COLOR, HEALTH_TEXT } from '../lib/format';
 import { GLOSSARY } from '../lib/glossary';
 import { useDraft } from '../store/draft';
 import { cx, SeaLine, Term } from './ui';
@@ -107,7 +99,10 @@ export function StatusStrip({ onOpenOverview }: { onOpenOverview?: () => void })
       </span>
       <span className="mt-1 line-clamp-2 block max-w-[560px] text-[13px] leading-[18px] text-white/75">
         {topAlert
-          ? topAlert.text + (a.alerts.length > 1 ? ` и ещё ${a.alerts.length - 1}` : '')
+          ? topAlert.text +
+            (a.alerts.length > 1
+              ? ` · ещё ${a.alerts.length - 1} ${plural(a.alerts.length - 1, 'проблема', 'проблемы', 'проблем')}`
+              : '')
           : empty
             ? 'Добавьте задачи и связи между ними, расчёт появится сразу'
             : 'Критический путь в норме, запас до дедлайна есть'}
@@ -213,14 +208,6 @@ export function StatusStrip({ onOpenOverview }: { onOpenOverview?: () => void })
                 fmtDate,
               )}
             />
-            <Metric
-              className="hidden lg:block"
-              label="Критический путь"
-              hint={GLOSSARY.critical}
-              value={fmtTasks(a.stats.critical)}
-              was={changed(a.stats.critical, b.stats.critical, (v) => v)}
-            />
-            <Metric className="hidden 2xl:block" label="Готово" value={`${a.stats.progressPct}%`} />
           </div>
           <AdvisorButton
             className="hidden md:flex"

@@ -89,10 +89,7 @@ describe('расписание (CPM)', () => {
 
   it('не планирует незавершённое в прошлом и отмечает просрочку', () => {
     const s = state(
-      [
-        task('A', 3, { status: 'in_progress', actualStart: '2026-09-07' }),
-        task('B', 2),
-      ],
+      [task('A', 3, { status: 'in_progress', actualStart: '2026-09-07' }), task('B', 2)],
       [dep('A', 'B')],
     );
     const a = analyze(s, '2026-09-16');
@@ -132,11 +129,20 @@ describe('ChangeSet', () => {
     // старт отсчитан назад на длительность задачи (3 дня). Интервал не пустой.
     const sunday = analyze(s, '2026-09-13');
     const done = statusPatch(s.tasks[0], 'done', sunday);
-    expect(done).toMatchObject({ status: 'done', actualStart: '2026-09-09', actualEnd: '2026-09-11' });
-    const after = analyze(applyChangeSet(s, [{ type: 'updateTask', taskId: 'A', patch: done }]), '2026-09-13');
+    expect(done).toMatchObject({
+      status: 'done',
+      actualStart: '2026-09-09',
+      actualEnd: '2026-09-11',
+    });
+    const after = analyze(
+      applyChangeSet(s, [{ type: 'updateTask', taskId: 'A', patch: done }]),
+      '2026-09-13',
+    );
     expect(after.tasks.A.ef - after.tasks.A.es).toBe(3);
     // «В работе» в выходной — старт в ближайший рабочий день.
-    expect(statusPatch(s.tasks[0], 'in_progress', sunday)).toMatchObject({ actualStart: '2026-09-14' });
+    expect(statusPatch(s.tasks[0], 'in_progress', sunday)).toMatchObject({
+      actualStart: '2026-09-14',
+    });
 
     // Будний день: плановый старт уже наступил — старт плановый, окончание сегодня.
     const wed = analyze(s, '2026-09-09');
@@ -146,14 +152,19 @@ describe('ChangeSet', () => {
     });
     // Фактический старт, если уже есть, сохраняется.
     const started = { ...s.tasks[0], status: 'in_progress' as const, actualStart: '2026-09-07' };
-    expect(statusPatch(started, 'done', wed)).toMatchObject({ actualStart: '2026-09-07', actualEnd: '2026-09-09' });
+    expect(statusPatch(started, 'done', wed)).toMatchObject({
+      actualStart: '2026-09-07',
+      actualEnd: '2026-09-09',
+    });
   });
 
   it('проверяет параметры проекта', () => {
     expect(() =>
       applyChangeSet(chain(), [{ type: 'updateProject', patch: { deadline: '2026-01-01' } }]),
     ).toThrow(/Дедлайн/);
-    const next = applyChangeSet(chain(), [{ type: 'updateProject', patch: { deadline: '2026-09-18' } }]);
+    const next = applyChangeSet(chain(), [
+      { type: 'updateProject', patch: { deadline: '2026-09-18' } },
+    ]);
     expect(analyze(next, TODAY).bufferDays).toBe(-2);
   });
 
@@ -273,7 +284,9 @@ describe('советник', () => {
     expect(() =>
       applyChangeSet(chain(), [{ type: 'updateDependency', dependencyId: 'A>B', lagDays: -4 }]),
     ).toThrow(ChangeSetError);
-    const ok = applyChangeSet(chain(), [{ type: 'updateDependency', dependencyId: 'A>B', lagDays: -1 }]);
+    const ok = applyChangeSet(chain(), [
+      { type: 'updateDependency', dependencyId: 'A>B', lagDays: -1 },
+    ]);
     expect(analyze(ok, TODAY).tasks.B.startDate).toBe('2026-09-09');
   });
 
@@ -289,5 +302,72 @@ describe('советник', () => {
     const r = advise(s, TODAY).suggestions.find((x) => x.kind === 'reassign');
     expect(r?.ops[0]).toMatchObject({ patch: { assigneeId: 'olga' } });
     expect(r?.resolves.length).toBeGreaterThan(0);
+  });
+
+  it('отдаёт часть критической задачи свободному коллеге похожей роли', () => {
+    const dev = (id: string, role: string) => ({ ...person(id), name: id, role });
+    const s = state(
+      [task('A', 10, { assigneeId: 'ivan' }), task('B', 2, { assigneeId: 'ivan' })],
+      [dep('A', 'B')],
+      {
+        people: [
+          dev('ivan', 'Backend-разработчик'),
+          dev('olga', 'Mobile-разработчик'),
+          dev('qa', 'QA-инженер'),
+        ],
+      },
+    );
+    s.project.deadline = indexToDate(analyze(s, TODAY).finishIndex - 1 - 2);
+    let n = 0;
+    const advice = advise(s, TODAY, { newId: () => `n${++n}` });
+    const split = advice.suggestions.find((x) => x.kind === 'split')!;
+    expect(split.id).toBe('split:A:olga');
+    expect(split.gainDays).toBe(2);
+    expect(split.sideEffects).toEqual([]);
+    const after = applyChangeSet(s, split.ops);
+    const part = after.tasks.find((t) => t.assigneeId === 'olga')!;
+    expect(part.durationDays).toBe(2);
+    expect(after.tasks.find((t) => t.id === 'A')!.durationDays).toBe(8);
+    // Последующая задача ждёт обе части.
+    expect(
+      after.dependencies.some((d) => d.predecessorId === part.id && d.successorId === 'B'),
+    ).toBe(true);
+    expect(split.why).toContain('критическом пути');
+  });
+
+  it('план «с запасом» даёт буфер не меньше порога, минимальный — только дедлайн', () => {
+    const s = state(
+      [task('A', 5), task('B', 10), task('C', 5), task('X', 3)],
+      [dep('A', 'B'), dep('B', 'C'), dep('A', 'X'), dep('X', 'C')],
+    );
+    s.project.deadline = indexToDate(analyze(s, TODAY).finishIndex - 1 - 1);
+    const advice = advise(s, TODAY);
+    expect(advice.plan?.bufferAfter).toBe(0);
+    expect(advice.safePlan?.bufferAfter).toBeGreaterThanOrEqual(2);
+  });
+
+  it('не советует ускорять заблокированную задачу', () => {
+    const s = state([task('A', 10, { status: 'blocked' }), task('B', 5)], [dep('A', 'B')]);
+    s.project.deadline = indexToDate(analyze(s, TODAY).finishIndex - 1 - 2);
+    const ids = advise(s, TODAY).suggestions.map((x) => x.id);
+    expect(ids).not.toContain('crash:A');
+    expect(ids).toContain('crash:B');
+  });
+
+  it('помечает побочный эффект: нахлёст создаёт перегрузку исполнителя', () => {
+    const s = state(
+      [
+        task('A', 5, { assigneeId: 'ivan' }),
+        task('B', 5, { assigneeId: 'olga' }),
+        task('C', 4, { assigneeId: 'olga' }),
+      ],
+      [dep('A', 'B')],
+      { people: [person('ivan'), person('olga')] },
+    );
+    s.project.deadline = indexToDate(analyze(s, TODAY).finishIndex - 1 - 2);
+    expect(analyze(s, TODAY).alerts.some((x) => x.code === 'overloaded')).toBe(false);
+    const par = advise(s, TODAY).suggestions.find((x) => x.id === 'par:A>B')!;
+    expect(par.gainDays).toBe(2);
+    expect(par.sideEffects.length).toBeGreaterThan(0);
   });
 });
